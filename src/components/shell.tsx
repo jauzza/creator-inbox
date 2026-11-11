@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { Bell, Compass, Home, Inbox, LogOut, MessageCircleHeart, MoreHorizontal, OctagonX, Settings, Users } from "lucide-react";
+import { Bell, Compass, Home, Inbox, LogOut, MessageCircleHeart, MoreHorizontal, OctagonX, Settings } from "lucide-react";
 import { Badge, Button, cn, Dialog, ToastProvider, useAction, type Mode } from "./ui";
 import { post, setCsrf, useApi, ago } from "@/lib/client";
 import { TourProvider, useTour } from "./tour/tour";
@@ -12,21 +12,24 @@ export type Me = { id: string; email: string; name: string; role: "OWNER" | "OPE
 const NAV = [
   { href: "/", label: "Home", icon: Home, tour: "nav-home" },
   { href: "/inbox", label: "Inbox", icon: Inbox, tour: "nav-inbox" },
-  { href: "/customers", label: "Customers", icon: Users, tour: "nav-customers" },
   { href: "/settings", label: "Settings", icon: Settings, tour: "nav-settings" },
 ];
 
-type AutoState = { globalMode: Mode; emergencyStop: boolean; emergencyStopAt: string | null };
+type AutoState = { globalMode: Mode; emergencyStop: boolean; emergencyStopAt: string | null; accounts?: { id: string; displayName: string; mode: Mode }[] };
+
+function summary(auto: AutoState) {
+  const models = auto.accounts ?? [];
+  const autoN = models.filter((m) => m.mode === "AUTO").length;
+  if (auto.emergencyStop) return { label: "Sending stopped", tone: "danger" as const, hint: "Nothing will be sent until you release the stop." };
+  if (autoN) return { label: `Auto-reply on · ${autoN} of ${models.length}`, tone: "ok" as const, hint: `${models.filter((m) => m.mode === "AUTO").map((m) => m.displayName.replace(" (Demo)", "")).join(", ")} ${autoN === 1 ? "replies" : "reply"} by itself. Others wait for you.` };
+  if (models.length && models.every((m) => m.mode === "PAUSED" || m.mode === "MANUAL")) return { label: "AI off", tone: "danger" as const, hint: "No drafts and no automatic replies." };
+  return { label: "Drafts only", tone: "accent" as const, hint: "The AI writes drafts. You approve every send." };
+}
 type ShellCtx = { me: Me; auto: AutoState | null; reloadAuto: () => void; openStop: () => void; attention: number };
 const Ctx = createContext<ShellCtx | null>(null);
 export const useShell = () => useContext(Ctx)!;
 
-const GLOBAL_LABEL: Record<string, { label: string; tone: "accent" | "ok" | "danger"; hint: string }> = {
-  DRAFT: { label: "Draft only", tone: "accent", hint: "AI writes drafts. You approve every send." },
-  AUTO: { label: "Automatic", tone: "ok", hint: "Simple, safe replies may send by themselves." },
-  PAUSED: { label: "AI off", tone: "danger", hint: "No drafts and no automatic replies." },
-  MANUAL: { label: "Manual", tone: "danger", hint: "You write every reply." },
-};
+
 
 export function Shell({ me, children }: { me: Me; children: ReactNode }) {
   setCsrf(me.csrfToken);
@@ -122,7 +125,7 @@ function Frame({ children }: { children: ReactNode }) {
         <main className={cn("min-w-0 flex-1", fullBleed ? "" : "px-4 pb-24 pt-5 sm:px-6 lg:px-10 lg:pb-12 lg:pt-8")}>{children}</main>
 
         {/* Mobile tab bar */}
-        <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-bg/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
+        <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-line bg-bg/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
           {NAV.map((n) => (
             <Link key={n.href} href={n.href} data-tour={n.tour} aria-current={isActive(n.href) ? "page" : undefined} className={cn("relative flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium", isActive(n.href) ? "text-fg" : "text-faint")}>
               <n.icon className={cn("size-5", isActive(n.href) && "text-accent")} aria-hidden />
@@ -148,7 +151,7 @@ function ModePill() {
   const { auto } = useShell();
   if (!auto) return null;
   if (auto.emergencyStop) return <Badge tone="danger" dot>Sending stopped</Badge>;
-  const g = GLOBAL_LABEL[auto.globalMode];
+  const g = summary(auto);
   return (
     <Link href="/settings/automation" title={g.hint}>
       <Badge tone={g.tone} dot>
@@ -161,7 +164,7 @@ function ModePill() {
 function AutomationCard() {
   const { auto } = useShell();
   if (!auto) return <div className="h-[108px] rounded-xl border border-line" />;
-  const g = GLOBAL_LABEL[auto.globalMode];
+  const g = summary(auto);
   return (
     <div className="rounded-xl border border-line bg-panel p-3">
       <div className="flex items-center justify-between">
@@ -172,9 +175,9 @@ function AutomationCard() {
       </div>
       <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium">
         <span className={cn("size-2 rounded-full", auto.emergencyStop ? "bg-danger" : g.tone === "ok" ? "bg-ok" : g.tone === "danger" ? "bg-danger" : "bg-accent")} aria-hidden />
-        {auto.emergencyStop ? "Sending stopped" : g.label}
+        {g.label}
       </p>
-      <p className="mt-0.5 text-[11.5px] leading-snug text-muted">{auto.emergencyStop ? "Nothing will be sent until you release the stop." : g.hint}</p>
+      <p className="mt-0.5 text-[11.5px] leading-snug text-muted">{g.hint}</p>
       <StopButton />
     </div>
   );

@@ -160,6 +160,33 @@ export async function setGlobalMode(userId: string, mode: AutomationMode) {
   });
 }
 
+/** The mode a model (account) actually runs in: the more careful of the global and the account setting. */
+export function modelMode(globalMode: AutomationMode, override: AutomationMode | null): AutomationMode {
+  if (!override) return globalMode;
+  return RESTRICTIVENESS[override] >= RESTRICTIVENESS[globalMode] ? override : globalMode;
+}
+
+/**
+ * Per-model switch (Auto / Drafts / Off). Turning one model to Auto needs explicit confirmation; if the
+ * global ceiling isn't Auto yet, every other model is pinned to its current mode first, so enabling one
+ * model never silently turns on automatic sending for another.
+ */
+export async function setModelMode(userId: string, accountId: string, mode: "AUTO" | "DRAFT" | "PAUSED", confirm?: boolean) {
+  if (mode === "AUTO" && !confirm) throw new HttpError(400, "Confirm turning on automatic replies for this model");
+  return db().$transaction(async (tx) => {
+    const auto = await getAutomation(tx);
+    if (mode === "AUTO" && auto.globalMode !== "AUTO") {
+      const others = await tx.creatorAccount.findMany({ where: { id: { not: accountId }, modeOverride: null } });
+      for (const o of others) await tx.creatorAccount.update({ where: { id: o.id }, data: { modeOverride: auto.globalMode } });
+      await tx.automationSettings.update({ where: { id: "global" }, data: { globalMode: "AUTO" } });
+    }
+    await tx.creatorAccount.update({ where: { id: accountId }, data: { modeOverride: mode } });
+    const reverted = mode !== "AUTO" ? await revertQueuedToProposed(tx, { accountId }, `Model set to ${mode === "PAUSED" ? "Off" : "Drafts"}`) : 0;
+    await audit("account.mode", { tx, actorId: userId, target: accountId, details: { to: mode, via: "model_switch" } });
+    return { reverted };
+  });
+}
+
 /** Emergency stop: takes effect for every dispatch from the moment this commits (dispatch re-reads it under lock). */
 export async function setEmergencyStop(userId: string, on: boolean) {
   return db().$transaction(async (tx) => {

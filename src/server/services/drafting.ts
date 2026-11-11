@@ -29,6 +29,11 @@ export async function activeStyle(client: Tx, accountId: string, version?: numbe
 export async function buildContext(client: Tx, conversationId: string, maxMessages: number) {
   const conv = await client.conversation.findUniqueOrThrow({ where: { id: conversationId }, include: { customer: true } });
   const msgs = (await client.message.findMany({ where: { conversationId }, orderBy: { sentAt: "desc" }, take: maxMessages })).reverse();
+  const auto = await getAutomation(client);
+  const declinedSince = new Date(Date.now() - auto.rules.offers.declineCooldownDays * 86400000);
+  const declinedTitles = (
+    await client.offer.findMany({ where: { customerId: conv.customerId, status: "DECLINED", createdAt: { gte: declinedSince } }, include: { catalogItem: { select: { title: true } } } })
+  ).map((o) => o.catalogItem.title);
   const { style, version } = await activeStyle(client, conv.accountId, await styleVersionForVariant(client, conv.customer.experimentVariant));
   const catalogRows = await client.catalogItem.findMany({ where: { accountId: conv.accountId, active: true }, take: 25 });
   const purchased = new Set(
@@ -52,11 +57,31 @@ export async function buildContext(client: Tx, conversationId: string, maxMessag
     catalog,
     summary: conv.summary,
     customerPreferences: prefs,
-    messages: msgs.map((m) => ({ direction: m.direction, body: m.body, at: m.sentAt.toISOString().slice(0, 16).replace("T", " ") })),
+    messages: msgs.map((m) => ({ direction: m.direction, body: m.body, at: relTime(m.sentAt), hoursAgo: (Date.now() - m.sentAt.getTime()) / 3600000 })),
     triageNotes: notes,
     isFirstAiMessage: priorAi === 0,
+    declinedTitles,
+    doNotContact: conv.customer.doNotContact,
+    offersSuppressed: !!conv.customer.suppressedUntil && conv.customer.suppressedUntil > new Date(),
+    offerCooldownHours: auto.rules.offers.offerCooldownHours,
   };
   return { ctx, styleVersion: version, conv, msgs, recentOutbound: msgs.filter((m) => m.direction === "OUTBOUND").map((m) => m.body) };
+}
+
+function relTime(d: Date) {
+  const m = Math.round((Date.now() - d.getTime()) / 60000);
+  return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
+}
+
+/** Store what the AI chose to remember (short, service-relevant facts) on the subscriber, deduplicated. */
+async function rememberFacts(tx: Tx, customerId: string, facts: string[]) {
+  const clean = facts.map((f) => f.trim().slice(0, 80)).filter((f) => f.length >= 3 && !/\b(password|card|address|phone|ssn|bank)\b/i.test(f));
+  if (!clean.length) return;
+  const c = await tx.customer.findUniqueOrThrow({ where: { id: customerId }, select: { preferences: true } });
+  const prefs = Array.isArray(c.preferences) ? (c.preferences as { value: string; source: string; at?: string }[]) : [];
+  const have = new Set(prefs.map((p) => p.value.toLowerCase()));
+  const add = clean.filter((f) => !have.has(f.toLowerCase())).map((value) => ({ value, source: "remembered by AI", at: new Date().toISOString() }));
+  if (add.length) await tx.customer.update({ where: { id: customerId }, data: { preferences: [...prefs, ...add].slice(-12) } });
 }
 
 export function applyDisclosure(body: string, opts: { isFirstAiMessage: boolean; mode: "first_ai_message" | "every_ai_message"; disclosureText: string; tag: string }) {
@@ -186,7 +211,7 @@ export async function generateReply(conversationId: string): Promise<{ outcome: 
           tx.message.count({ where: { conversationId, direction: "OUTBOUND" } }),
         ]);
         // Generation already waited out the debounce; the plan's delay starts now.
-        const plan = planReply({ inboundAt: [new Date(Date.now() - auto.rules.debounce.quietSec * 1000)], isFirstReply: anyOutbound === 0, rules: auto.rules, sentLastHour, sentLastDay });
+        const plan = planReply({ inboundAt: [new Date(Date.now() - auto.rules.debounce.quietSec * 1000)], isFirstReply: anyOutbound === 0, rules: auto.rules, sentLastHour, sentLastDay, replyChars: out.reply.length });
         if (plan.ok) scheduledFor = plan.sendAt;
         else autoNote = ` Auto-send skipped: ${plan.reason}.`;
       } else if (pol.aiMayAutoSend && warnings.length) {
@@ -204,6 +229,7 @@ export async function generateReply(conversationId: string): Promise<{ outcome: 
           scheduledFor,
         },
       });
+      await rememberFacts(tx, conv.customerId, out.remember ?? []);
       await tx.funnelEvent.create({ data: { type: "reply_drafted", conversationId, customerId: conv.customerId, draftId: draft.id, variant: base.variant, isSimulated: conv.account.isSimulated } });
       if (scheduledFor) {
         await enqueue(tx, { type: "dispatch_draft", conversationId, runAt: scheduledFor, payload: { draftId: draft.id }, dedupeKey: `draft:${draft.id}` });

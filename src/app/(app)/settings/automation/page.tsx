@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Bot, Check, OctagonX, PauseCircle, PenLine } from "lucide-react";
-import { Advanced, Badge, Button, Card, cn, Dialog, ErrorBox, Input, Segmented, Select, SettingRow, SimBadge, Skeleton, Switch, useAction } from "@/components/ui";
+import { Advanced, Avatar, Badge, Button, Card, cn, Dialog, ErrorBox, Input, Segmented, SettingRow, SimBadge, Skeleton, Switch, useAction } from "@/components/ui";
+import { ModelSwitch } from "@/components/model-switch";
 import { post, useApi } from "@/lib/client";
 import { useShell } from "@/components/shell";
 import { Queue, RulesEditor } from "@/components/settings/automation-advanced";
@@ -44,38 +45,25 @@ function Body({ d, reload }: { d: any; reload: () => void }) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-[18px] font-semibold tracking-[-0.015em]">Automation &amp; scheduling</h2>
-        <p className="mt-1 max-w-2xl text-[14px] text-muted">Decide how much your AI may do on its own, and when. You can override this for any single conversation from the inbox.</p>
+        <h2 className="text-[18px] font-semibold tracking-[-0.015em]">Automation &amp; timing</h2>
+        <p className="mt-1 max-w-2xl text-[14px] text-muted">Turn auto-reply on per model, and choose how quickly it answers. You can always pause one chat or take over from the inbox.</p>
       </div>
 
-      <Card title="How much can the AI do?">
-        <div role="radiogroup" aria-label="AI mode" className="grid gap-2.5 md:grid-cols-3">
-          {modes.map((o) => {
-            const on = d.globalMode === o.m;
-            return (
-              <button
-                key={o.m}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                disabled={!owner || busy === "mode"}
-                onClick={() => (on ? null : o.m === "AUTO" ? setConfirmAuto(true) : setMode(o.m))}
-                className={cn("relative rounded-xl border p-4 text-left transition-all disabled:cursor-not-allowed", on ? "border-accent bg-accent/8 ring-1 ring-accent/40" : "border-line hover:border-line-strong hover:bg-panel-2")}
-              >
-                <span className="flex items-center justify-between">
-                  <span className={cn("flex size-8 items-center justify-center rounded-lg", on ? "bg-accent/20 text-accent" : "bg-panel-3 text-muted")}>
-                    <o.icon className="size-4" aria-hidden />
-                  </span>
-                  {on ? <Check className="size-4 text-accent" aria-label="Selected" /> : o.tag && <span className="text-[10.5px] font-medium text-faint">{o.tag}</span>}
-                </span>
-                <span className="mt-3 block text-[14px] font-medium">{o.title}</span>
-                <span className="mt-1 block text-[12.5px] leading-relaxed text-muted">{o.text}</span>
-              </button>
-            );
-          })}
-        </div>
+      <Card title="Auto-reply per model" description="Off: the AI stays quiet. Drafts: it writes, you approve. Auto: it replies by itself with natural timing.">
+        <ul className="divide-y divide-line">
+          {d.accounts.map((a: any) => (
+            <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <span className="flex items-center gap-2.5 text-[13.5px] font-medium">
+                <Avatar name={a.displayName} size={30} />
+                {a.displayName.replace(" (Demo)", "")}
+                {a.isSimulated && <SimBadge />}
+              </span>
+              <ModelSwitch accountId={a.id} name={a.displayName.replace(" (Demo)", "")} mode={a.mode} isSimulated={a.isSimulated} onChange={() => { reload(); reloadAuto(); }} />
+            </li>
+          ))}
+        </ul>
         {!owner && <p className="mt-3 text-xs text-faint">Only the account owner can change this.</p>}
-        <p className="mt-4 text-xs leading-relaxed text-faint">Even in Automatic, these always go to you: explicit requests, billing questions and refunds, complaints, safety concerns, and anyone asking for a real person.</p>
+        <p className="mt-4 text-xs leading-relaxed text-faint">Even on Auto, these always come to you: explicit requests, billing questions and refunds, complaints, safety concerns, and anyone asking for a real person. Paid messages always need your approval.</p>
       </Card>
 
       <Card padded={false}>
@@ -136,19 +124,19 @@ function Body({ d, reload }: { d: any; reload: () => void }) {
 
       <div className="space-y-3">
         <p className="text-xs font-medium uppercase tracking-[0.06em] text-faint">Advanced</p>
-        <Advanced title="Different setting per account" description="Make one account more careful than the rest">
-          <ul className="divide-y divide-line">
-            {d.accounts.map((a: any) => (
-              <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
-                <span className="flex items-center gap-2 text-[13px]">{a.displayName} {a.isSimulated && <SimBadge />}</span>
-                <Select aria-label={`Setting for ${a.displayName}`} className="h-8 w-56" disabled={!owner} value={a.modeOverride ?? ""} onChange={(e) => run("acct", () => post("/api/automation", { action: "account_mode", accountId: a.id, mode: e.target.value || null }).then(reload), "Updated")} options={[{ value: "", label: "Same as everywhere" }, { value: "AUTO", label: "Automatic (if allowed above)" }, { value: "DRAFT", label: "Drafts only" }, { value: "MANUAL", label: "Manual" }, { value: "PAUSED", label: "Off" }]} />
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs text-faint">The most careful setting always wins: an account can be stricter than your main setting, never looser.</p>
-        </Advanced>
         <Advanced title="Detailed timing" description="Exact delays, waiting for a burst of messages, quiet hours, limits per chat, with a preview">
           <RulesEditor d={d} reload={reload} section="timing" />
+        </Advanced>
+        <Advanced title="Offers and selling" description="How long the AI waits before mentioning a paid item again, and how long a “no” pauses offers">
+          <div className="-my-4 divide-y divide-line">
+            <SettingRow title="Pause between offers" description="After the AI mentions a paid item, it just chats for at least this long, unless the subscriber asks.">
+              <span className="flex items-center gap-2 text-[13px]"><Input aria-label="Hours between offers" type="number" min={0} max={168} value={r.offers.offerCooldownHours} onChange={(e) => setR((p: any) => ({ ...p, offers: { ...p.offers, offerCooldownHours: Number(e.target.value) } }))} className="w-20" /> hours</span>
+            </SettingRow>
+            <SettingRow title="After a subscriber says no" description="Offers stay paused for that subscriber for this many days.">
+              <span className="flex items-center gap-2 text-[13px]"><Input aria-label="Days offers stay paused after a no" type="number" min={0} max={365} value={r.offers.declineCooldownDays} onChange={(e) => setR((p: any) => ({ ...p, offers: { ...p.offers, declineCooldownDays: Number(e.target.value) } }))} className="w-20" /> days</span>
+            </SettingRow>
+          </div>
+          {dirty && <div className="mt-4 flex justify-end gap-2"><Button variant="ghost" size="sm" onClick={() => setR(d.rules)}>Undo</Button><Button variant="primary" size="sm" onClick={saveRules} loading={busy === "rules"} disabled={!owner}>Save</Button></div>}
         </Advanced>
         <Advanced title="Interest scoring, handoffs and disclosure" description="When a customer is passed to you, how interest is scored, and how AI replies are labelled">
           <RulesEditor d={d} reload={reload} section="rules" />

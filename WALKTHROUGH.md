@@ -15,28 +15,27 @@ You can restart or resume the tour any time: use **Guided tour** in the sidebar 
 
 ## The steps
 
-1. **Welcome.** What the tour covers, and a reminder that it's a safe demo.
-2. **Home.** The three status cards: Inbox, AI assistant, Automation, all in plain words.
-3. **Safety button.** Where the emergency stop lives.
-4. **Open the inbox.** *Your turn: click Inbox.*
-5. **Where messages arrive.** The list, with its "Needs you", "Draft ready" and "Demo" markers.
-6. **A new customer writes in.** Press *Send test message*: "Taylor (test customer)" sends "Hey! I'm new here. What kind of content do you offer?" through the normal simulated-webhook path.
-7. **Open Taylor's conversation.** *Your turn.* The unread dot shows it's new.
-8. **Watch the AI write a reply.** Press *Write a reply*. The draft area shows that the AI is writing (no hidden reasoning is shown). Then it runs the real pipeline: policy, AI, safety checks, draft.
-   - With a connected and tested AI model, that model writes the draft.
-   - Without one, the built-in sample rules write it, and it's labelled **Sample reply**.
-9. **The draft isn't sent yet.** What "Why this reply?" shows, and what Draft, Automatic and Manual mean.
-10. **Make it yours.** *Your turn: change a word in the reply.*
-11. **Open Settings.** *Your turn.*
-12. **Pick how your AI sounds.** *Your turn:* choose a personality preset (Friendly, Playful, Confident, Professional, Short & sweet) or move a slider.
-13. **Try this style.** *Your turn.* The same test message is answered again with your unsaved settings.
-14. **Before and after.** Both replies appear, with the changed settings listed. **Keep this style** saves a new style version; **Undo changes** restores the old one.
-15. **Approve the reply.** *Your turn:* Approve & send. The reply goes to the simulator only. This step explains the difference between a draft and a sent message.
-16. **Sent, and clearly labelled.** The sent bubble reads "AI draft · approved · Demo".
-17. **Pause the AI for one chat**, then **18. Resume AI.** *Your turn* for both.
-19. **Take over**, then **20. Hand back to AI.** *Your turn* for both. Taking over cancels waiting AI drafts.
-21. **The big red button.** The emergency stop: what it blocks, and how to release it.
-22. **All set.** What you learned, and the remaining real setup: connect messaging, connect an AI model (optional), choose the automation level.
+1. **Welcome**, then **Your models**: one card per model, each with its own AI switch (Off / Drafts / Auto).
+2. **Safety button**: where the emergency stop lives.
+3. **Open the inbox** *(your turn)*, then **where messages arrive**.
+4. **A subscriber writes in**: "Taylor (test customer)" sends "Hey! I'm new here. What kind of content do you offer?" through the signed simulator webhook.
+5. **Open Taylor's chat** *(your turn)*, then **watch the AI write a reply**. It shows a writing state, then a draft labelled **Not sent yet**. Without an AI model connected, it is labelled **Sample reply**.
+6. **Make it yours** *(your turn: edit a word)*.
+7. **Auto-reply**:
+   1. Set Mira to **Auto** *(your turn, with a confirmation)*.
+   2. Taylor writes again. The AI writes the reply and waits, with a live "Sending in 0:42" countdown.
+   3. The tour explains batching of quick messages, discarding stale replies, reply hours, and "Don't send" or take over. In demo mode you can skip a natural wait. Waits caused by reply hours can't be skipped.
+8. **Personality**:
+   1. Open Settings *(your turn)*.
+   2. Pick a personality or move a slider *(your turn)*.
+   3. Press **Try this style** *(your turn)*.
+   4. Compare **before / after**, with the changed settings listed. Then **Keep** or **Undo**.
+9. **PPV**: Taylor asks about hiking photos. The AI names one fitting item with its real price (Autumn Hike, $12), and a PPV chip offers **Prepare PPV** for your approval. The AI never sends paid content itself.
+10. **You're in control**:
+    1. Pause AI *(your turn)*, then Resume *(your turn)*.
+    2. Take over *(your turn)*, then Hand back *(your turn)*.
+    3. The big red stop button.
+11. **All set**: what you learned, and the next real setup steps.
 
 ## Setup wizard (`/setup`)
 

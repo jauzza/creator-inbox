@@ -1,5 +1,6 @@
 import { MAX_CHARS, type Style } from "./style";
-import type { CatalogFact, ReplyOutput } from "./prompt";
+import type { CatalogFact, ChatSignals, ReplyOutput } from "./prompt";
+import { mentionsItem } from "./chatcraft";
 
 export type Issue = { code: string; severity: "block" | "warn"; detail: string };
 
@@ -8,8 +9,8 @@ const DENIAL = /\b(i'?m not (a )?(bot|ai|robot)|not an ai|this is (really|actual
 const LIVE_ACTIVITY = /\b(i'?m (online|in bed|at home|home now|awake|nearby|near you|free now)|just (got home|woke up|got out of)|right now i'?m|i'?ll be live|i'?m live)\b/i;
 const DELIVERY = /\b(i (just )?sent (it|you|that)|check your (messages|inbox|dms?)|(it'?s|it has been) (sent|delivered|unlocked)|you'?ve been charged)\b/i;
 const PRESSURE = /\b(only today|last chance|limited time|before it'?s gone|only \d+ left|exclusive(ly)? for you|special discount|hurry|don'?t miss out|you'?ll regret)\b/i;
-const PROMISE = /\b(i promise|i'?ll (make|film|shoot|record) (you|something)|custom (video|content) for you|we can meet|call you|facetime)\b/i;
-const GENERIC = /\b(as an ai|how (can|may) i (assist|help) you today|i'?m here to help|dear (valued )?customer|i hope this message finds you)\b/i;
+const PROMISE = /\b(i promise|i'?ll (make|film|shoot|record) (you|something)|custom (video|content) for you|we can meet|let'?s meet|meet up|come over|call you|facetime|my address|my number|add me on)\b/i;
+const GENERIC = /\b(as an ai|how (can|may) i (assist|help) you( today)?|i'?m here to help|happy to help|feel free to|don'?t hesitate|let me know if you have any|dear (valued )?customer|i hope this message finds you)\b/i;
 const EMOJI = /\p{Extended_Pictographic}/u;
 const MONEY = /(?:\$|€|£)\s?(\d+(?:[.,]\d{1,2})?)|(\d+(?:[.,]\d{1,2})?)\s?(?:usd|dollars|euros?|eur)\b/gi;
 
@@ -27,9 +28,12 @@ export function similarity(a: string, b: string) {
   return inter / Math.min(A.size, B.size);
 }
 
+/** Style problems worth one rewrite (they also hold an automatic send for review). */
+export const STYLE_CODES = new Set(["too_long", "much_longer", "question_streak", "generic_assistant", "avoid_phrase", "style_emoji", "repetitive", "narration", "repeat_offer"]);
+
 export function validateReply(
-  out: ReplyOutput,
-  ctx: { style: Style; catalog: CatalogFact[]; recentOutbound: string[]; latestInbound: string },
+  out: Pick<ReplyOutput, "action" | "reply"> & Partial<ReplyOutput>,
+  ctx: { style: Style; catalog: CatalogFact[]; recentOutbound: string[]; latestInbound: string; chat?: ChatSignals },
 ): Issue[] {
   const issues: Issue[] = [];
   const r = out.reply.trim();
@@ -68,6 +72,26 @@ export function validateReply(
     if (p && r.toLowerCase().includes(p.toLowerCase())) issues.push({ code: "avoid_phrase", severity: "warn", detail: `Uses avoided phrase "${p}"` });
   }
   if ((r.match(/\?/g) ?? []).length > 2) issues.push({ code: "too_many_questions", severity: "warn", detail: "More than two questions" });
+  if (/\*[^*\n]{2,}\*/.test(r)) issues.push({ code: "narration", severity: "warn", detail: "Narrated *actions* don't belong in DMs" });
+
+  // Chat-quality and offer-timing checks (dataset research: short turns, no interrogation, offers only on interest).
+  const lastOut = ctx.recentOutbound.at(-1)?.trim() ?? "";
+  if (r.includes("?") && lastOut.endsWith("?") && !/\?/.test(ctx.latestInbound))
+    issues.push({ code: "question_streak", severity: "warn", detail: "Asks another question right after asking one" });
+  const chat = ctx.chat;
+  const informational = chat && ["content_question", "price_question", "buying_interest", "ai_question"].includes(chat.situation);
+  if (chat && !informational && chat.subscriber.avgChars > 0 && r.length > chat.subscriber.targetMaxChars * 1.4 && r.length > 120)
+    issues.push({ code: "much_longer", severity: "warn", detail: `${r.length} chars; they write about ${chat.subscriber.avgChars}` });
+  const named = ctx.catalog.filter((c) => mentionsItem(r, c));
+  if (chat && named.length) {
+    const pitchy = /\$\d|\b(want|get|grab|unlock|check (it )?out|interested|send (it|you))\b/i.test(r);
+    if (chat.offer.mode === "none" && pitchy) issues.push({ code: "unprompted_offer", severity: "block", detail: `Pitches "${named[0].title}" although ${chat.offer.reason.toLowerCase()}` });
+    const owned = named.filter((c) => c.alreadyPurchased);
+    if (owned.length && pitchy && !issues.some((i) => i.code === "offers_purchased_item")) issues.push({ code: "offers_purchased_item", severity: "block", detail: `Offers "${owned[0].title}", which they already bought` });
+    if (named.length > 2 && chat.offer.mode === "suggest") issues.push({ code: "too_many_offers", severity: "warn", detail: "Suggests more than two items at once" });
+    if (ctx.recentOutbound.slice(-4).some((m) => named.some((c) => mentionsItem(m, c))) && chat.offer.mode !== "answer")
+      issues.push({ code: "repeat_offer", severity: "warn", detail: "Brings up an item that was already mentioned recently" });
+  }
   return issues;
 }
 

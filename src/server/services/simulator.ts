@@ -25,8 +25,13 @@ export const SIM_SCENARIOS = {
 } as const;
 export type Scenario = keyof typeof SIM_SCENARIOS;
 
-async function simAccount() {
-  const a = await db().creatorAccount.findFirst({ where: { isSimulated: true } });
+/** The demo model a simulated chat belongs to (or the first demo model for a new chat). */
+async function simAccount(chatId?: string) {
+  if (chatId) {
+    const conv = await db().conversation.findFirst({ where: { externalChatId: chatId, account: { isSimulated: true } }, include: { account: true } });
+    if (conv) return conv.account;
+  }
+  const a = await db().creatorAccount.findFirst({ where: { isSimulated: true }, orderBy: { createdAt: "asc" } });
   if (!a) throw new HttpError(404, "No simulated account. Reset the simulator to create one.");
   return a;
 }
@@ -45,7 +50,7 @@ async function deliver(raw: string, eventId?: string) {
 }
 
 export async function simulateScenario(userId: string, scenario: Scenario, chatId?: string) {
-  const acct = await simAccount();
+  const acct = await simAccount(chatId);
   const chat = chatId ?? `sim_fan_${randomBytes(3).toString("hex")}`;
   const name = chatId ? undefined : `Sim fan ${chat.slice(-4)}`;
   const texts = SIM_SCENARIOS[scenario];
@@ -60,12 +65,12 @@ export async function simulateScenario(userId: string, scenario: Scenario, chatI
 
 /** Deliver one signed simulated inbound message (same path as a real webhook). Used by the guided tour. */
 export async function deliverSimulated(chatId: string, fromName: string, text: string) {
-  const acct = await simAccount();
+  const acct = await simAccount(chatId);
   return deliver(payload(acct.externalAccountId ?? acct.id, chatId, fromName, text, new Date()));
 }
 
 export async function simulateCustomText(userId: string, chatId: string, text: string) {
-  const acct = await simAccount();
+  const acct = await simAccount(chatId);
   const r = await deliver(payload(acct.externalAccountId ?? acct.id, chatId, "", text, new Date()));
   await audit("simulator.message", { actorId: userId, details: { chatId } });
   return r;
@@ -73,7 +78,7 @@ export async function simulateCustomText(userId: string, chatId: string, text: s
 
 /** Delivers the exact same signed event twice: the second must be reported as a duplicate. */
 export async function simulateDuplicateWebhook(userId: string, chatId: string) {
-  const acct = await simAccount();
+  const acct = await simAccount(chatId);
   const raw = payload(acct.externalAccountId ?? acct.id, chatId, "", "is the subscription monthly?", new Date());
   const eventId = `evt_dup_${randomBytes(4).toString("hex")}`;
   const first = await deliver(raw, eventId);
@@ -85,7 +90,7 @@ export async function simulateDuplicateWebhook(userId: string, chatId: string) {
 
 /** Older message arriving after a newer one. */
 export async function simulateOutOfOrder(userId: string, chatId: string) {
-  const acct = await simAccount();
+  const acct = await simAccount(chatId);
   const ext = acct.externalAccountId ?? acct.id;
   const newer = await deliver(payload(ext, chatId, "", "(sent second) also, do you have bundles?", new Date()));
   const older = await deliver(payload(ext, chatId, "", "(sent first) hi, question about sets", new Date(Date.now() - 90_000)));

@@ -2,7 +2,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowUp, Check, ChevronDown, Hand, MoreHorizontal, Pause, PanelRight, Play, RefreshCw, Sparkles, Undo2, UserRound } from "lucide-react";
 import { Avatar, Badge, Button, cn, Dialog, InfoTip, MODE_EXPLAIN, Notice, SimBadge, TechDetails, useAction, type Mode } from "../ui";
-import { ago, post } from "@/lib/client";
+import { ago, money, post } from "@/lib/client";
 import { useTour } from "../tour/tour";
 import { useShell } from "../shell";
 
@@ -76,7 +76,7 @@ export function ConversationView({ c, reload, onBack, onDetails, detailsOpen }: 
     }), ok);
   const activeDraft = c.drafts.find((d: any) => ["PROPOSED", "QUEUED", "APPROVED", "SENDING", "HANDOFF", "STALE"].includes(d.status));
   const genJob = c.nextActions.find((j: any) => j.type === "generate_reply");
-  const tourDrafting = c.isTour && tour.active && tour.busy && tour.step?.id === "watch-draft";
+  const tourDrafting = c.isTour && tour.active && tour.busy && ["watch-draft", "auto-wait", "ppv"].includes(tour.step?.id ?? "");
   const due = genJob ? Date.now() - new Date(genJob.runAt).getTime() : -1;
   const thinking = tourDrafting || genJob?.status === "RUNNING" || (genJob?.status === "PENDING" && due > -1500 && due < 20000);
   const lastInbound = c.messages.at(-1)?.direction === "INBOUND";
@@ -97,6 +97,7 @@ export function ConversationView({ c, reload, onBack, onDetails, detailsOpen }: 
           <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em]">
             <span className="truncate">{c.customer.name}</span>
             {c.account.isSimulated && <SimBadge />}
+            <span className="hidden truncate text-xs font-normal text-faint sm:inline">· {c.account.name.replace(" (Demo)", "")}</span>
           </h2>
           <p className="flex items-center gap-1.5 text-[12.5px] text-muted">
             <span className={cn("size-1.5 rounded-full", { accent: "bg-accent", ok: "bg-ok", warn: "bg-warn", danger: "bg-danger", neutral: "bg-faint" }[st.tone])} aria-hidden />
@@ -240,7 +241,7 @@ export function ConversationView({ c, reload, onBack, onDetails, detailsOpen }: 
           {thinking ? (
             <Thinking />
           ) : activeDraft ? (
-            <DraftCard key={activeDraft.id} d={activeDraft} c={c} reload={reload} />
+            <DraftCard key={activeDraft.id} d={activeDraft} c={c} reload={reload} openDetails={() => !detailsOpen && onDetails()} />
           ) : lastInbound && c.policy.aiMayDraft ? (
             <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-dashed border-line px-4 py-3 text-[13px] text-muted">
               <span className="flex items-center gap-2">
@@ -304,7 +305,26 @@ function sourceLabel(model: string) {
   return { label: `Written by ${model}`, tip: "Written by your connected AI model, then checked by the app's safety rules." };
 }
 
-function DraftCard({ d, c, reload }: { d: any; c: any; reload: () => void }) {
+function Countdown({ to }: { to: string }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const s = Math.max(0, Math.round((new Date(to).getTime() - now) / 1000));
+  return <span className="tabular-nums">{s >= 3600 ? `${Math.round(s / 3600)}h` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`}</span>;
+}
+
+function findPpv(text: string, catalog: any[]) {
+  const t = text.toLowerCase();
+  return catalog.find((i) => {
+    const title = i.title.toLowerCase();
+    const key = title.split(/\s+/).find((w: string) => w.length >= 5) ?? title;
+    return t.includes(title) || t.includes(key);
+  });
+}
+
+function DraftCard({ d, c, reload, openDetails }: { d: any; c: any; reload: () => void; openDetails: () => void }) {
   const { busy, run } = useAction();
   const tour = useTour();
   const [body, setBody] = useState(d.body);
@@ -345,13 +365,28 @@ function DraftCard({ d, c, reload }: { d: any; c: any; reload: () => void }) {
       <div className="flex flex-wrap items-center gap-2 border-b border-line/70 bg-accent/5 px-4 py-2.5">
         <Sparkles className="size-4 text-accent" aria-hidden />
         <span className="text-[13px] font-medium">{d.status === "HANDOFF" ? "The AI passed this one to you" : "Suggested reply"}</span>
-        {d.status === "QUEUED" ? <Badge tone="ok" dot>Sends {ago(d.scheduledFor)}</Badge> : d.status === "APPROVED" || d.status === "SENDING" ? <Badge tone="ok" dot>Sending…</Badge> : <Badge tone="warn">Not sent yet</Badge>}
+        {d.status === "QUEUED" ? <Badge tone="ok" dot>Sending in <Countdown to={d.scheduledFor} /></Badge> : d.status === "APPROVED" || d.status === "SENDING" ? <Badge tone="ok" dot>Sending…</Badge> : <Badge tone="warn">Not sent yet</Badge>}
         <span className="ml-auto flex items-center gap-1 text-[11.5px] text-faint">
           {src.label}
           <InfoTip label="Where did this reply come from?">{src.tip}</InfoTip>
         </span>
       </div>
       <div className="space-y-3 px-4 py-3">
+        {d.status === "QUEUED" && (
+          <div data-tour="auto-wait" className="flex flex-wrap items-center gap-2 rounded-xl bg-ok/8 px-3.5 py-2.5 text-[12.5px] text-muted">
+            <span className="flex-1">
+              {new Date(d.scheduledFor).getTime() - Date.now() > 10 * 60000
+                ? `It's outside the reply hours set in Automation & timing, so it waits until ${new Date(d.scheduledFor).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`
+                : "The AI is waiting a natural moment before sending, like a person would."}{" "}
+              You can still edit it, stop it or take over.
+            </span>
+            {c.account.isSimulated && new Date(d.scheduledFor).getTime() - Date.now() <= 10 * 60000 && (
+              <Button size="xs" variant="secondary" loading={busy === "ff"} onClick={() => run("ff", () => post("/api/simulator", { action: "fast_forward" }).then(reload), "Skipping the wait (demo only)")}>
+                Skip the wait (demo)
+              </Button>
+            )}
+          </div>
+        )}
         {forced && (
           <Notice tone="warn">
             {c.customer.name} wrote again after this draft was written. Read the new message first, then send it anyway or ask for a new draft.
@@ -389,6 +424,24 @@ function DraftCard({ d, c, reload }: { d: any; c: any; reload: () => void }) {
             ))}
           </ul>
         )}
+        {(() => {
+          const item = d.status !== "HANDOFF" ? findPpv(body, c.catalog) : null;
+          if (!item) return null;
+          const owned = c.customer.purchases.some((p: any) => p.item === item.title);
+          return (
+            <div data-tour="ppv-chip" className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel-2/60 px-3.5 py-2.5 text-[12.5px]">
+              <span className="rounded-md bg-accent/15 px-1.5 py-0.5 text-[11px] font-semibold text-accent-strong">PPV</span>
+              <span className="flex-1 text-muted">
+                Mentions <b className="font-medium text-fg">{item.title}</b>{item.priceConfirmed ? ` · ${money(item.priceCents)}` : ""}{owned ? " (they already own it)" : ""}. The AI only names it; sending the paid message is up to you.
+              </span>
+              {!owned && (
+                <Button size="xs" loading={busy === "ppv"} onClick={() => run("ppv", () => post("/api/offers", { action: "propose", customerId: c.customer.id, catalogItemId: item.id, priceCents: item.priceCents }).then(() => { reload(); openDetails(); }), "PPV prepared. Approve it in the customer panel, then send it on the platform.")}>
+                  Prepare PPV
+                </Button>
+              )}
+            </div>
+          );
+        })()}
         {why && (
           <div className="animate-fade-in rounded-xl bg-panel-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-muted">
             <p className="text-fg/90">{d.explanation || "No explanation was given."}</p>

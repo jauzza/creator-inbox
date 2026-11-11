@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check, MessageCircle, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Wand2, X } from "lucide-react";
 import { Advanced, Avatar, Badge, Button, Card, cn, ErrorBox, Field, InfoTip, Input, Segmented, SettingRow, Skeleton, Slider, Switch, TechDetails, Textarea, useAction, useToast } from "@/components/ui";
 import { ago, humanize, post, useApi } from "@/lib/client";
@@ -8,7 +9,7 @@ import { useShell } from "@/components/shell";
 import { AiConnection } from "@/components/settings/ai-connection";
 import { Ai as AiTechnical } from "@/components/settings/integrations";
 import { Experiment, Workbench } from "@/components/settings/style-advanced";
-import { Catalog } from "@/components/settings/activity";
+import { PpvMenu } from "@/components/settings/ppv-menu";
 
 type Style = {
   creatorName: string;
@@ -64,7 +65,20 @@ function diff(a: Style, b: Style): { label: string; from: string; to: string }[]
 }
 
 export default function AiSettingsPage() {
-  const style = useApi<any>("/api/style");
+  return (
+    <Suspense>
+      <AiSettings />
+    </Suspense>
+  );
+}
+
+function AiSettings() {
+  const sp = useSearchParams();
+  const router = useRouter();
+  const { auto } = useShell();
+  const models = auto?.accounts ?? [];
+  const model = sp.get("model") ?? models[0]?.id ?? "";
+  const style = useApi<any>(model ? `/api/style?account=${model}` : null);
   const integ = useApi<any>("/api/integrations");
   if (style.error && !style.data) return <ErrorBox error={style.error} retry={style.reload} />;
   if (!style.data || !integ.data)
@@ -77,7 +91,21 @@ export default function AiSettingsPage() {
         </div>
       </div>
     );
-  return <Editor key={style.data.active.version ?? "default"} d={style.data} integ={integ.data} reload={() => { style.reload(); integ.reload(); }} />;
+  return (
+    <>
+      {models.length > 1 && (
+        <div role="tablist" aria-label="Model" className="mb-5 flex flex-wrap gap-2">
+          {models.map((m) => (
+            <button key={m.id} type="button" role="tab" aria-selected={model === m.id} onClick={() => router.replace(`/settings/ai?model=${m.id}`, { scroll: false })} className={cn("flex items-center gap-2 rounded-xl border py-1.5 pl-1.5 pr-3.5 text-[13px] font-medium transition-colors", model === m.id ? "border-accent/50 bg-accent/10 text-fg" : "border-line text-muted hover:border-line-strong hover:text-fg")}>
+              <Avatar name={m.displayName} size={26} />
+              {m.displayName.replace(" (Demo)", "")}
+            </button>
+          ))}
+        </div>
+      )}
+      <Editor key={`${style.data.account.id}:${style.data.active.version ?? "default"}`} d={style.data} integ={integ.data} reload={() => { style.reload(); integ.reload(); }} />
+    </>
+  );
 }
 
 function Editor({ d, integ, reload }: { d: any; integ: any; reload: () => void }) {
@@ -123,8 +151,8 @@ function Editor({ d, integ, reload }: { d: any; integ: any; reload: () => void }
   return (
     <div className="pb-24">
       <div className="mb-6">
-        <h2 className="text-[18px] font-semibold tracking-[-0.015em]">AI Assistant</h2>
-        <p className="mt-1 max-w-2xl text-[14px] text-muted">Choose how your AI sounds and what it knows. Try changes on the right before you save. Nothing changes for customers until you press Save.</p>
+        <h2 className="text-[18px] font-semibold tracking-[-0.015em]">{d.account.name.replace(" (Demo)", "")}'s AI personality</h2>
+        <p className="mt-1 max-w-2xl text-[14px] text-muted">How the AI sounds for this model, what it knows, and what it can offer. Try changes in the preview first; nothing changes for subscribers until you press Save.</p>
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_400px] xl:gap-x-6">
@@ -201,10 +229,11 @@ function Editor({ d, integ, reload }: { d: any; integ: any; reload: () => void }
             <div className="space-y-5">
               <Field label="Name the AI writes as">{(id) => <Input id={id} value={s.creatorName} onChange={(e) => update({ creatorName: e.target.value })} className="max-w-xs" />}</Field>
               <ListEditor label="Facts about you" placeholder="e.g. I post new sets on Tuesdays and Fridays" items={s.publicFacts} onChange={(v) => update({ publicFacts: v })} max={40} />
-              <Advanced title="Items you sell" description="Your catalog. The AI only mentions these items and prices.">
-                <Catalog />
-              </Advanced>
             </div>
+          </Card>
+
+          <Card title="PPV menu" description="Paid videos and sets the AI may mention, with exact prices. It only brings them up when a subscriber is interested, never re-offers what they bought, and backs off after a no.">
+            <PpvMenu accountId={d.account.id} />
           </Card>
 
           <Card title="Words and boundaries" description="Phrases that sound like you, and lines the AI must never cross.">
@@ -410,7 +439,7 @@ function Preview({ saved, current, dirty, changes, accountId, sampleLabel, onKee
             <Button type="submit" size="md" disabled={!draftMsg.trim() || draftMsg.trim() === msg}>Test</Button>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {["when do you post?", "how much is the autumn hike set?", "are you a bot?", "thanks!!"].map((q) => (
+            {["haha nice", "anything new this week?", "how much are your videos?", "i'd love to buy something", "are you a bot?"].map((q) => (
               <button key={q} type="button" onClick={() => { setDraftMsg(q); setAfter(null); setMsg(q); }} className="rounded-full border border-line px-2.5 py-1 text-[11.5px] text-muted hover:border-line-strong hover:text-fg">
                 {q}
               </button>

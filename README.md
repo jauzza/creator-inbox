@@ -1,22 +1,24 @@
 # Creator Inbox
 
-A self-hosted inbox and customer-management system for creator accounts. It brings conversations into one place and adds draft-first AI replies for non-explicit support and conversation. It also includes intent ranking, human handoffs, Telegram alerts and a fully working simulator.
+A self-hosted AI chatter for one person managing a few creator accounts. Each model gets her own AI personality, PPV menu and auto-reply switch. When a subscriber writes, the AI reads the conversation and what it remembers about them, replies in that model's voice after a natural pause, and mentions a paid item only when the subscriber is genuinely interested. You can watch every chat, take over, pause, or stop everything.
 
 > **Status: working software, not production-certified.** It is verified against the simulator and an automated test suite (see [Test results](#test-results)). The live messaging adapter has **not** been verified against a real account because no credentials were available. Read [RESEARCH.md](RESEARCH.md) for what is and isn't confirmed.
 
 ## What it does
 
-The app has four areas: **Home**, **Inbox**, **Customers** and **Settings**. Everything technical lives in Settings, mostly behind "Advanced" sections. The automation status and the **Stop all sends** button are always visible: in the sidebar on desktop, in the top bar on phones.
+The app has three areas: **Home**, **Inbox** and **Settings**. Everything technical lives in Settings, mostly behind "Advanced" sections. The automation status and the **Stop all sends** button are always visible: in the sidebar on desktop, in the top bar on phones.
 
 - **First run.** Home offers **Explore with a demo** (an interactive spotlight tour that uses the simulator, no keys needed) or **Set up my account** (a four-step wizard). See [WALKTHROUGH.md](WALKTHROUGH.md).
-- **Home.**
-  - Plain-language status cards: Inbox, AI assistant, Automation.
-  - A "Needs you" queue.
-  - Today's numbers, with demo numbers labelled.
-  - Setup progress.
-  - A link to the full report.
+- **Home:** one card per model, each showing:
+  - its connection and personality;
+  - an **Off / Drafts / Auto** switch (Auto asks you to confirm and never changes other models);
+  - counts of chats, "needs you" and "sending soon".
+
+  Below the cards is a "Needs you" queue across all models. Two demo models are included: Mira (friendly, normal case) and Luna (playful, lowercase, emoji).
+- **Automatic conversations.** Subscriber message → bursts are batched → the AI reads recent history and the fan brief → writes in the model's style → waits a natural delay (reply speed, plus typing time, inside reply hours) → sends through the provider. Anything the subscriber writes before it goes out cancels and rewrites the reply.
+- **PPV.** A small per-model menu (title, what's in it, price). The AI names one fitting item only on genuine interest or a direct question, with a cooling period after an offer or a "no". It never re-offers a purchased item. Sending the paid message is always your call: "Prepare PPV", then approve.
 - **Inbox.**
-  - Conversation list with filters: All · Needs you · Unread · Drafts · Mine.
+  - Model switcher (All models / each model) and filters: All · Needs you · Unread · Drafts · Mine.
   - Chat bubbles with day separators and "who sent this" labels.
   - A highlighted draft card marked **Not sent yet**, with "Why this reply?" and feedback chips.
   - Customer details in a drawer.
@@ -37,11 +39,11 @@ The app has four areas: **Home**, **Inbox**, **Customers** and **Settings**. Eve
   - Every send is revalidated at dispatch under a per-conversation row lock: stop, mode, takeover, version, age, caps and hours.
   - Uses a transactional outbox with provider idempotency keys.
   - Ambiguous results go to a visible "uncertain" state and are reconciled; they are never blindly retried.
-- **Customers.**
+- **Subscriber details** (drawer in each chat; no separate Customers tab).
   - A decaying 0–100 intent heuristic, with evidence for every point. It is a ranking, not a probability.
   - Engagement and verified spend are tracked separately.
   - Outcomes, decline cooldowns, a do-not-contact flag, and an offer ledger in which a human confirms recipient, asset and price. Paid messages are sent by a person on the platform.
-- **AI Assistant (personality editor).**
+- **AI personality (per model).**
   - Personality presets: Friendly, Playful, Confident, Professional, Short & sweet.
   - Reply length, emoji, a Casual↔Polished slider and a Reserved↔Expressive slider.
   - Facts, favourite phrases, "never say", boundaries and example replies.
@@ -233,7 +235,7 @@ Test a restore into a scratch database before relying on it. Retention purges li
 
 Run on 2026-11-11 (macOS arm64, Node 22.23):
 
-- `npm test`: **63 passed** across 3 files. This includes the guided-tour flow (simulated account only, drafts on request, nothing sent, restart replaces the test chat) and the Telegram chat lookup.
+- `npm test`: **68 passed** across 4 files. New tests cover the chat-quality bar (33 scenarios), the per-model auto switch, AI memory, auto-reply delay and PPV in the tour, and time-zone-safe job claiming. This includes the guided-tour flow (simulated account only, drafts on request, nothing sent, restart replaces the test chat) and the Telegram chat lookup.
   - Policy, timing (including the DST switch and windows that cross midnight), validator, triage/scoring, crypto/redaction, SSRF guard, experiments and disclosure.
   - Integration flows on in-process Postgres:
     - draft and auto modes, debounce, duplicate and out-of-order events, bad signatures

@@ -28,6 +28,7 @@ const config: NextConfig = {
       { source: "/simulator", destination: "/settings/advanced?tab=demo", permanent: false },
       { source: "/activity", destination: "/settings/advanced", permanent: false },
       { source: "/help", destination: "/settings/preferences", permanent: false },
+      { source: "/customers", destination: "/inbox", permanent: false },
     ];
   },
   async headers() {

@@ -7,6 +7,7 @@ import { ago, useApi } from "@/lib/client";
 import { ConversationView } from "@/components/inbox/conversation";
 import { CustomerPanel } from "@/components/inbox/customer";
 import { useTour } from "@/components/tour/tour";
+import { useShell } from "@/components/shell";
 
 const FILTERS = [
   { id: "", label: "All" },
@@ -30,6 +31,9 @@ function Inbox() {
   const tour = useTour();
   const selected = sp.get("c");
   const [filter, setFilter] = useState(sp.get("filter") === "handoff" ? "needs_you" : sp.get("filter") ?? "");
+  const [model, setModel] = useState(sp.get("model") ?? "");
+  const { auto } = useShell();
+  const models = auto?.accounts ?? [];
   const [q, setQ] = useState("");
   const [qDebounced, setQDebounced] = useState("");
   const [details, setDetails] = useState(false);
@@ -43,7 +47,11 @@ function Inbox() {
     const f = sp.get("filter");
     if (f != null) setFilter(f === "handoff" ? "needs_you" : f);
   }, [sp]);
-  const listUrl = useMemo(() => `/api/conversations?filter=${filter}&q=${encodeURIComponent(qDebounced)}`, [filter, qDebounced]);
+  useEffect(() => {
+    const m = sp.get("model");
+    if (m != null) setModel(m);
+  }, [sp]);
+  const listUrl = useMemo(() => `/api/conversations?filter=${filter}&q=${encodeURIComponent(qDebounced)}${model ? `&account=${model}` : ""}`, [filter, qDebounced, model]);
   const list = useApi<any[]>(listUrl, { poll: tour.active ? 1200 : 4000 });
   const detail = useApi<any>(selected ? `/api/conversations/${selected}` : null, { poll: tour.active ? 1200 : 3000 });
   // During the tour the demo is always visible, even if demo chats are hidden in Preferences.
@@ -68,6 +76,20 @@ function Inbox() {
             <h1 className="text-[17px] font-semibold tracking-[-0.015em]">Inbox</h1>
             {list.data && <span className="text-xs text-faint">{rows.length} conversation{rows.length === 1 ? "" : "s"}</span>}
           </div>
+          {models.length > 1 && (
+            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" role="tablist" aria-label="Model" data-tour="model-picker">
+              <button type="button" role="tab" aria-selected={!model} onClick={() => setModel("")} className={cn("flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[12.5px] font-medium transition-colors", !model ? "border-accent/50 bg-accent/10 text-fg" : "border-line text-muted hover:text-fg")}>
+                All models
+              </button>
+              {models.map((m) => (
+                <button key={m.id} type="button" role="tab" aria-selected={model === m.id} onClick={() => setModel(m.id)} className={cn("flex shrink-0 items-center gap-1.5 rounded-lg border py-1 pl-1 pr-2.5 text-[12.5px] font-medium transition-colors", model === m.id ? "border-accent/50 bg-accent/10 text-fg" : "border-line text-muted hover:text-fg")}>
+                  <Avatar name={m.displayName} size={20} />
+                  {m.displayName.replace(" (Demo)", "")}
+                  <span className={cn("size-1.5 rounded-full", m.mode === "AUTO" ? "bg-ok" : m.mode === "DRAFT" ? "bg-accent" : "bg-faint")} title={m.mode === "AUTO" ? "Auto-reply on" : m.mode === "DRAFT" ? "Drafts" : "AI off"} />
+                </button>
+              ))}
+            </div>
+          )}
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-faint" aria-hidden />
             <Input aria-label="Search customers" placeholder="Search by name" value={q} onChange={(e) => setQ(e.target.value)} className="h-9 pl-9" />
@@ -117,7 +139,7 @@ function Inbox() {
           <ul className="space-y-0.5">
             {rows.map((c) => (
               <li key={c.id}>
-                <ConversationRow c={c} selected={selected === c.id} onOpen={() => open(c.id)} />
+                <ConversationRow c={c} selected={selected === c.id} onOpen={() => open(c.id)} showModel={!model && models.length > 1} />
               </li>
             ))}
           </ul>
@@ -165,7 +187,7 @@ function Inbox() {
   );
 }
 
-function ConversationRow({ c, selected, onOpen }: { c: any; selected: boolean; onOpen: () => void }) {
+function ConversationRow({ c, selected, onOpen, showModel }: { c: any; selected: boolean; onOpen: () => void; showModel?: boolean }) {
   const unread = c.unread > 0;
   const status = c.handoff
     ? { label: "Needs you", cls: "bg-warn/12 text-warn" }
@@ -195,7 +217,7 @@ function ConversationRow({ c, selected, onOpen }: { c: any; selected: boolean; o
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className={cn("truncate text-[14px]", unread ? "font-semibold text-fg" : "font-medium text-fg/90")}>{c.customer.name}</span>
-          {c.account.isSimulated && <SimBadge />}
+          {showModel ? <span className="shrink-0 truncate text-[11px] text-faint">· {c.account.name.replace(" (Demo)", "")}</span> : c.account.isSimulated && <SimBadge />}
           <span className={cn("ml-auto shrink-0 text-[11.5px]", unread ? "text-accent" : "text-faint")}>{ago(c.lastMessage?.at).replace(" ago", "")}</span>
         </div>
         <p className={cn("mt-0.5 truncate text-[13px]", unread ? "text-fg/80" : "text-muted")}>

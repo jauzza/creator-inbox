@@ -1,5 +1,5 @@
-import { buildReplyMessages, parseReplyOutput, type ReplyContext, type ReplyOutput } from "./prompt";
-import { validateReply, hasBlocking, type Issue } from "./validator";
+import { buildReplyMessages, deriveChat, parseReplyOutput, type ReplyContext, type ReplyOutput } from "./prompt";
+import { validateReply, hasBlocking, STYLE_CODES, type Issue } from "./validator";
 import { AiError, type AiProvider } from "./types";
 import type { AiSettings } from "./config";
 
@@ -23,9 +23,10 @@ export async function runReplyPipeline(
   provider: AiProvider,
   model: string,
   settings: Pick<AiSettings, "maxOutputTokens" | "temperature" | "topP" | "thinking" | "timeoutMs">,
-  ctx: ReplyContext,
+  ctx0: ReplyContext,
   opts: { maxRewrites: number; recentOutbound: string[] },
 ): Promise<PipelineResult> {
+  const ctx: ReplyContext = { ...ctx0, chat: deriveChat(ctx0) };
   const res: PipelineResult = { output: null, issues: [], rewriteCount: 0, tokensIn: 0, tokensOut: 0, latencyMs: 0, calls: 0, model };
   const latestInbound = [...ctx.messages].reverse().find((m) => m.direction === "INBOUND")?.body ?? "";
 
@@ -55,13 +56,19 @@ export async function runReplyPipeline(
       res.error = { kind: "bad_output", message: "Model output did not match the reply schema (after one retry)" };
       return res;
     }
-    let issues = validateReply(out, { style: ctx.style, catalog: ctx.catalog, recentOutbound: opts.recentOutbound, latestInbound });
-    if (hasBlocking(issues) && opts.maxRewrites > 0) {
+    const check = (o: ReplyOutput) => validateReply(o, { style: ctx.style, catalog: ctx.catalog, recentOutbound: opts.recentOutbound, latestInbound, chat: ctx.chat });
+    let issues = check(out);
+    // One bounded rewrite for safety blocks and for style problems (too long, question streak, generic...).
+    if ((hasBlocking(issues) || issues.some((i) => STYLE_CODES.has(i.code))) && opts.maxRewrites > 0) {
       res.rewriteCount = 1;
       const second = await call({ ...ctx, rewriteFeedback: issues.map((i) => `${i.code}: ${i.detail}`) });
       if (second) {
-        out = second;
-        issues = validateReply(out, { style: ctx.style, catalog: ctx.catalog, recentOutbound: opts.recentOutbound, latestInbound });
+        const secondIssues = check(second);
+        const score = (xs: Issue[]) => xs.filter((i) => i.severity === "block").length * 10 + xs.length;
+        if (score(secondIssues) <= score(issues)) {
+          out = second;
+          issues = secondIssues;
+        }
       }
     }
     res.output = out;

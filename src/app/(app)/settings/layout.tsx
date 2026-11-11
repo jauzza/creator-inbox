@@ -5,9 +5,9 @@ import { Bell, Bot, MessageSquare, SlidersHorizontal, Sparkles, Wrench } from "l
 import { cn } from "@/components/ui";
 
 const SECTIONS = [
-  { href: "/settings/ai", label: "AI Assistant", hint: "Personality & knowledge", icon: Sparkles },
-  { href: "/settings/accounts", label: "Messaging accounts", hint: "Where messages come from", icon: MessageSquare },
-  { href: "/settings/automation", label: "Automation & scheduling", hint: "What the AI may do, and when", icon: Bot },
+  { href: "/settings/ai", label: "AI personality", hint: "Voice, knowledge & PPV menu, per model", icon: Sparkles },
+  { href: "/settings/accounts", label: "Connections", hint: "Your creator accounts", icon: MessageSquare },
+  { href: "/settings/automation", label: "Automation & timing", hint: "Auto-reply per model, reply speed", icon: Bot },
   { href: "/settings/notifications", label: "Notifications", hint: "How we alert you", icon: Bell },
   { href: "/settings/preferences", label: "Appearance & preferences", hint: "Tour, motion, demo data", icon: SlidersHorizontal },
   { href: "/settings/advanced", label: "Advanced", hint: "Logs, demo lab, team, data", icon: Wrench },

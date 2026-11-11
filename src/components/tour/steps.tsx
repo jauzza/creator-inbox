@@ -8,7 +8,7 @@ export type TourData = { conversationId?: string; draftId?: string | null; draft
 
 export type TourStep = {
   id: string;
-  chapter: "welcome" | "inbox" | "ai" | "control" | "done";
+  chapter: "welcome" | "inbox" | "auto" | "ai" | "ppv" | "control" | "done";
   title: string;
   body: ReactNode | ((d: TourData) => ReactNode);
   /** Route to open when the step starts. `routeLoose` accepts any query string on the same path. */
@@ -30,7 +30,9 @@ export type TourStep = {
 export const CHAPTERS = [
   { id: "welcome", label: "Welcome" },
   { id: "inbox", label: "Your inbox" },
-  { id: "ai", label: "Your AI" },
+  { id: "auto", label: "Auto-reply" },
+  { id: "ai", label: "Personality" },
+  { id: "ppv", label: "PPV" },
   { id: "control", label: "You're in control" },
   { id: "done", label: "All set" },
 ] as const;
@@ -64,7 +66,7 @@ export const STEPS: TourStep[] = [
     title: "Hi! Let's take a quick tour",
     body: (
       <>
-        <p>In about three minutes you'll watch a test customer message arrive, see your AI write a reply, give your AI a personality, and learn how to stay in control.</p>
+        <p>In about four minutes you'll watch a subscriber's message arrive, see the AI write a reply, switch on auto-reply and watch it wait before sending, change a model's personality, see a natural PPV moment, and learn how to take over.</p>
         <p>Everything happens in a <b>safe demo</b>. Nothing is sent to real customers.</p>
       </>
     ),
@@ -75,8 +77,13 @@ export const STEPS: TourStep[] = [
     route: "/",
     target: "home-status",
     placement: "bottom",
-    title: "Everything at a glance",
-    body: "These cards tell you, in plain words, whether messages are coming in, whether your AI is ready, and how much the AI is allowed to do on its own.",
+    title: "Your models, at a glance",
+    body: (
+      <>
+        <p>Each creator account you manage gets a card: its own AI personality, its own connection and its own AI switch (<b>Off</b>, <b>Drafts</b> or <b>Auto</b>).</p>
+        <p>These two are demo models, so you can try everything without connecting a real account.</p>
+      </>
+    ),
   },
   {
     id: "stop-intro",
@@ -190,12 +197,55 @@ export const STEPS: TourStep[] = [
     task: { label: "change a word in the reply.", event: "draft-edited" },
   },
   {
+    id: "auto-on",
+    chapter: "auto",
+    route: "/",
+    target: "model-switch",
+    placement: "bottom",
+    title: "Now let the AI handle Mira's chats",
+    body: (
+      <>
+        <p>So far the AI only wrote drafts. Switch Mira to <b>Auto</b> and it will reply by itself, in her style, with natural timing.</p>
+        <p className="text-xs text-faint">Mira is a demo model, so replies only go to the simulator. You'll be asked to confirm.</p>
+      </>
+    ),
+    task: { label: "set Mira to Auto and confirm.", event: "auto-on" },
+  },
+  {
+    id: "auto-wait",
+    chapter: "auto",
+    route: convoRoute,
+    target: "draft-area",
+    placement: "top",
+    ensure: ensureConversation,
+    title: "Taylor writes again",
+    body: "Let's have Taylor send another message. Watch what the AI does on Auto: it writes the reply, then waits a natural moment before sending, just like a person reading and typing.",
+    primary: { label: "Send Taylor's next message", busyLabel: "Writing…", run: async (d) => {
+      const [r] = await Promise.all([post("/api/tour", { action: "followup", conversationId: d.conversationId, kind: "chat" }), new Promise((res) => setTimeout(res, 1200))]);
+      return { draftId: r.draftId, draftOutcome: r.outcome };
+    } },
+  },
+  {
+    id: "auto-countdown",
+    chapter: "auto",
+    route: convoRoute,
+    target: "draft-card",
+    placement: "top",
+    title: "Written, then a natural pause",
+    body: (
+      <>
+        <p>The countdown shows when it will send. If several messages arrive quickly, the AI waits for the burst to finish and answers them together. If the subscriber writes again before it sends, the old reply is thrown away and rewritten.</p>
+        <p>You can still edit it, press <b>Don't send</b>, or take over. In the demo you can skip the wait.</p>
+      </>
+    ),
+  },
+  {
     id: "nav-settings",
     chapter: "ai",
     target: "nav-settings",
     placement: "right",
-    title: "Give your AI a personality",
-    body: "You decide how your AI sounds: friendly, playful, confident or professional. No technical setup needed.",
+    title: "Give each model her own voice",
+    body: "Every model has her own personality: tone, length, emoji, phrases she likes, things she'd never say, and her PPV menu. No technical setup needed.",
     task: { label: "click Settings.", event: "nav-settings", path: (p) => p.startsWith("/settings") },
   },
   {
@@ -205,9 +255,9 @@ export const STEPS: TourStep[] = [
     routeLoose: true,
     target: "ai-personality",
     placement: "right",
-    title: "Pick how your AI sounds",
-    body: "Choose a tone, then fine-tune with the sliders. Each one changes how replies are written, and the live preview shows you what that looks like.",
-    task: { label: "choose a different tone or move a slider.", event: "style-changed" },
+    title: "Pick how Mira sounds",
+    body: "Choose a personality, then fine-tune with the sliders. The live preview shows what each change does to a real reply.",
+    task: { label: "choose a different personality or move a slider.", event: "style-changed" },
   },
   {
     id: "try-style",
@@ -217,7 +267,7 @@ export const STEPS: TourStep[] = [
     target: "ai-try",
     placement: "left",
     title: "See the difference instantly",
-    body: "We'll answer Taylor's same message again, this time using your new settings.",
+    body: "We'll answer the same subscriber message again, this time with your new settings.",
     task: { label: "click “Try this style”.", event: "style-tried" },
   },
   {
@@ -230,39 +280,41 @@ export const STEPS: TourStep[] = [
     title: "Before and after",
     body: (
       <>
-        <p>The first reply uses your saved style; the second uses your changes. The settings you changed are listed underneath.</p>
-        <p><b>Keep</b> saves the new style. <b>Undo</b> puts everything back. Or keep experimenting.</p>
+        <p>The first reply uses Mira's saved style; the second uses your changes. What you changed is listed underneath.</p>
+        <p><b>Keep</b> saves it. <b>Undo</b> puts everything back. Or keep experimenting.</p>
       </>
     ),
     task: { label: "click Keep or Undo, or press Next.", event: "style-decided" },
   },
   {
-    id: "approve",
-    chapter: "control",
+    id: "ppv",
+    chapter: "ppv",
+    route: convoRoute,
+    target: "draft-area",
+    placement: "top",
+    ensure: ensureConversation,
+    title: "A subscriber shows real interest",
+    body: (
+      <>
+        <p>Taylor will now ask about Mira's hiking photos. The AI only brings up paid content when someone is genuinely interested, never in plain small talk, and never again right after a no.</p>
+      </>
+    ),
+    primary: { label: "Send Taylor's question", busyLabel: "Writing…", run: async (d) => {
+      const [r] = await Promise.all([post("/api/tour", { action: "followup", conversationId: d.conversationId, kind: "ppv" }), new Promise((res) => setTimeout(res, 1200))]);
+      return { draftId: r.draftId, draftOutcome: r.outcome };
+    } },
+  },
+  {
+    id: "ppv-explain",
+    chapter: "ppv",
     route: convoRoute,
     target: "draft-card",
     placement: "top",
-    ensure: ensureDraft,
-    title: "Approve the reply",
+    title: "One fitting item, real price",
     body: (
       <>
-        <p>A <b>draft</b> is written but not sent. When you approve it, it's <b>sent</b>. Here it goes only to the demo customer.</p>
-        <p>In <b>Automatic</b> mode the AI could send simple, safe replies like this one itself. New accounts always start in Draft mode, so nothing is sent without you.</p>
-      </>
-    ),
-    task: { label: "click “Approve & send”.", event: "draft-approved" },
-  },
-  {
-    id: "sent",
-    chapter: "control",
-    route: convoRoute,
-    target: "message-list",
-    placement: "left",
-    title: "Sent, and clearly labelled",
-    body: (
-      <>
-        <p>Sent messages appear on the right, labelled with who sent them. Drafts always sit in their own box below, marked <b>Not sent yet</b>.</p>
-        <p className="text-xs text-faint">Because Taylor is a demo customer, the reply went to the built-in simulator and nowhere else. If it doesn't appear in a few seconds, the background helper may be off; Home will tell you.</p>
+        <p>The AI picked the one PPV item that fits what Taylor asked about, with its exact price from Mira's PPV menu. No made-up discounts, no pressure.</p>
+        <p>It only <b>mentions</b> the item. Sending the paid message itself is your call: <b>Prepare PPV</b> lines it up for your approval.</p>
       </>
     ),
   },
@@ -348,7 +400,7 @@ function Finish() {
   const live = data?.accounts?.filter((a: any) => !a.isSimulated) ?? [];
   const messagingOk = live.some((a: any) => a.connectionStatus === "CONNECTED");
   const aiOk = data ? data.ai.settings.provider !== "offline" && data.ai.settings.verifiedModel === data.ai.settings.replyModel : false;
-  const learned = ["Messages arrive in your inbox", "The AI writes drafts; you approve", "You can give your AI a personality", "Pause, take over, or stop everything any time"];
+  const learned = ["Messages arrive in one inbox, for all your models", "On Auto, the AI replies by itself after a natural pause", "Each model has her own personality and PPV menu", "Paid items come up only on real interest; sending PPV is your call", "Pause, take over, or stop everything any time"];
   return (
     <div className="space-y-3">
       <ul className="grid gap-1.5">
@@ -360,11 +412,11 @@ function Finish() {
       </ul>
       <div className="rounded-xl border border-line bg-panel-2/60 p-3">
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-faint">Next: real setup</p>
-        <SetupLine done={messagingOk} icon={<MessageSquare className="size-3.5" />} href="/setup" label="Connect your messaging account" />
+        <SetupLine done={messagingOk} icon={<MessageSquare className="size-3.5" />} href="/setup" label="Connect your creator accounts" />
         <SetupLine done={aiOk} icon={<Sparkles className="size-3.5" />} href="/setup?step=ai" label="Connect an AI model (optional)" />
-        <SetupLine done={false} icon={<Plug className="size-3.5" />} href="/settings/automation" label="Choose how much the AI may do" />
+        <SetupLine done={false} icon={<Plug className="size-3.5" />} href="/settings/ai" label="Set each model's personality and PPV menu" />
       </div>
-      <p className="text-xs text-faint">Prefer to keep exploring? The demo customers stay in your inbox. You can restart this tour from “Guided tour” any time.</p>
+      <p className="text-xs text-faint">Mira (demo) is still on Auto; switch her back on Home whenever you like. The demo chats stay in your inbox, and you can restart this tour from “Guided tour” any time.</p>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { todayKey } from "../ai/config";
 import { providerForAccount } from "../providers/messaging/registry";
 import type { SessionUser } from "../auth/session";
 import { accessibleAccountIds } from "../auth/access";
+import { modelMode } from "./controls";
 
 export async function overview(user: SessionUser) {
   const ids = await accessibleAccountIds(user);
@@ -44,13 +45,23 @@ export async function overview(user: SessionUser) {
     take: 500,
   });
   let aiHelping = 0;
-  const attention: { conversationId: string; customer: string; isSimulated: boolean; kind: "handoff" | "draft" | "uncertain"; reason: string; preview: string | null; at: Date | null; priority: number }[] = [];
+  const perModel = new Map<string, { needsYou: number; drafts: number; queued: number; chats: number; unread: number }>();
+  for (const a of accounts) perModel.set(a.id, { needsYou: 0, drafts: 0, queued: 0, chats: 0, unread: 0 });
+  const attention: { conversationId: string; customer: string; model: string; isSimulated: boolean; kind: "handoff" | "draft" | "uncertain"; reason: string; preview: string | null; at: Date | null; priority: number }[] = [];
   for (const c of convs) {
     const pol = policyFor(c, auto);
     if (pol.aiMayDraft) aiHelping++;
+    const pm = perModel.get(c.accountId);
+    if (pm) {
+      pm.chats++;
+      if (c.unreadCount > 0) pm.unread++;
+      if (c.handoffs[0] || c.drafts[0]?.status === "UNCERTAIN") pm.needsYou++;
+      else if (c.drafts[0]?.status === "PROPOSED" && c.drafts[0].nextAction !== "WAIT") pm.drafts++;
+      if (c.drafts[0]?.status === "QUEUED") pm.queued++;
+    }
     const h = c.handoffs[0];
     const d = c.drafts[0];
-    const base = { conversationId: c.id, customer: c.customer.displayName, isSimulated: c.account.isSimulated, preview: c.messages[0]?.body.slice(0, 140) ?? null, at: c.lastInboundAt };
+    const base = { conversationId: c.id, customer: c.customer.displayName, model: c.account.displayName, isSimulated: c.account.isSimulated, preview: c.messages[0]?.body.slice(0, 140) ?? null, at: c.lastInboundAt };
     if (h) attention.push({ ...base, kind: "handoff", reason: h.reason, priority: 100 + h.priority });
     else if (d?.status === "UNCERTAIN") attention.push({ ...base, kind: "uncertain", reason: "We couldn't confirm a reply was delivered", priority: 90 });
     else if (d?.status === "PROPOSED" && d.nextAction !== "WAIT") attention.push({ ...base, kind: "draft", reason: "A reply is ready for your approval", priority: 50 });
@@ -65,6 +76,7 @@ export async function overview(user: SessionUser) {
     db().message.count({ where: { direction: "OUTBOUND", sentAt: { gte: dayStart }, conversation: { ...conv, account: { isSimulated: true } } } }),
   ]);
   const live = accounts.filter((a) => !a.isSimulated);
+  const styles = await db().styleProfile.findMany({ where: { accountId: { in: accounts.map((a) => a.id) }, active: true }, select: { accountId: true, data: true } });
 
   return {
     status: {
@@ -80,6 +92,18 @@ export async function overview(user: SessionUser) {
       },
     },
     aiHelping,
+    models: accounts.map((a) => {
+      const style = styles.find((s) => s.accountId === a.id);
+      return {
+        id: a.id,
+        name: a.displayName,
+        isSimulated: a.isSimulated,
+        connectionStatus: a.connectionStatus,
+        mode: modelMode(auto.globalMode, a.modeOverride),
+        tone: (style?.data as { tone?: string } | undefined)?.tone ?? null,
+        ...perModel.get(a.id)!,
+      };
+    }),
     attention: attention.slice(0, 8),
     attentionTotal: attention.length,
     today: { real: { received: inToday, sent: outToday }, simulated: { received: inTodaySim, sent: outTodaySim } },

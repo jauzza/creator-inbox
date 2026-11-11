@@ -8,10 +8,10 @@ import { audit } from "@/server/audit";
 
 export const GET = api({ auth: "user" }, async () => {
   const state = await db().simulatorState.upsert({ where: { id: "sim" }, create: { id: "sim" }, update: {} });
-  const acct = await db().creatorAccount.findFirst({ where: { isSimulated: true } });
-  const chats = acct ? await db().conversation.findMany({ where: { accountId: acct.id }, include: { customer: { select: { displayName: true } } }, orderBy: { createdAt: "asc" } }) : [];
+  const acct = await db().creatorAccount.findFirst({ where: { isSimulated: true }, orderBy: { createdAt: "asc" } });
+  const chats = await db().conversation.findMany({ where: { account: { isSimulated: true } }, include: { customer: { select: { displayName: true } }, account: { select: { displayName: true } } }, orderBy: { createdAt: "asc" } });
   const sent = await db().simulatorSent.findMany({ orderBy: { createdAt: "desc" }, take: 10 });
-  return { scenarios: Object.keys(SIM_SCENARIOS), state, account: acct ? { id: acct.id, name: acct.displayName } : null, chats: chats.map((c) => ({ id: c.id, chatId: c.externalChatId, name: c.customer.displayName })), sent };
+  return { scenarios: Object.keys(SIM_SCENARIOS), state, account: acct ? { id: acct.id, name: acct.displayName } : null, chats: chats.map((c) => ({ id: c.id, chatId: c.externalChatId, name: `${c.customer.displayName} · ${c.account.displayName.replace(" (Demo)", "")}` })), sent };
 });
 
 const body = z.discriminatedUnion("action", [

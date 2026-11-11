@@ -102,7 +102,7 @@ describe("prompt: structure and injection containment", () => {
     const user = msgs[1].content;
     expect(user.match(/<\/conversation>/g)!.length).toBe(1);
     expect(user).toContain("‹/conversation›");
-    expect(msgs[0].content).toMatch(/untrusted customer data/);
+    expect(msgs[0].content).toMatch(/untrusted subscriber data/);
     expect(msgs[0].content + user).not.toMatch(/api[_ -]?key\s*[:=]/i);
   });
   it("parses only schema-valid output", () => {

@@ -391,3 +391,74 @@ describe("guided tour (simulated test customer)", () => {
     await expect(tourDraft(ownerId, r.conversationId)).rejects.toThrow(/tour/);
   });
 });
+
+describe("per-model auto-reply switch", () => {
+  it("turning one model to Auto never turns on auto-sending for another model", async () => {
+    const { setModelMode, modelMode } = await import("@/server/services/controls");
+    const mira = (await simConversation(db, "sim_fan_ari")).account;
+    const other = await db.creatorAccount.create({ data: { displayName: "Second model", provider: "SIMULATOR", externalAccountId: "sim_acct_two", isSimulated: true, connectionStatus: "CONNECTED" } });
+    await expect(setModelMode(ownerId, mira.id, "AUTO")).rejects.toThrow(/Confirm/);
+    await setModelMode(ownerId, mira.id, "AUTO", true);
+    const g = await db.automationSettings.findUniqueOrThrow({ where: { id: "global" } });
+    const o = await db.creatorAccount.findUniqueOrThrow({ where: { id: other.id } });
+    expect(g.globalMode).toBe("AUTO");
+    expect(modelMode(g.globalMode, o.modeOverride)).toBe("DRAFT"); // pinned to what it was
+    const r = await inbound("sim_fan_ari", "when do you post new sets?");
+    await runQueue(db);
+    expect((await outbound(r.conversationId))[0]?.origin).toBe("AI_AUTO");
+
+    await setModelMode(ownerId, mira.id, "PAUSED");
+    const before = await db.draft.count({ where: { conversationId: r.conversationId } });
+    await inbound("sim_fan_ari", "and what camera do you use?");
+    await runQueue(db);
+    expect(await db.draft.count({ where: { conversationId: r.conversationId } })).toBe(before); // Off: no new drafts
+  });
+
+  it("remembers what the subscriber shares and uses it in the next reply context", async () => {
+    const r = await inbound("sim_fan_sam", "my name is Jordan and I have a big exam tomorrow");
+    await runQueue(db);
+    const c = await db.customer.findFirstOrThrow({ where: { conversations: { some: { id: r.conversationId } } } });
+    const prefs = (c.preferences as { value: string }[]).map((p) => p.value);
+    expect(prefs).toContain("Goes by Jordan");
+    expect(prefs.some((p) => /exam/i.test(p))).toBe(true);
+  });
+});
+
+describe("guided tour: auto-reply and PPV moments", () => {
+  it("in Auto the follow-up is queued with a natural delay, and genuine interest gets one real PPV item", async () => {
+    const { tourReceive, tourFollowup } = await import("@/server/services/tour");
+    const { setModelMode } = await import("@/server/services/controls");
+    const { conversationId } = await tourReceive(ownerId);
+    const conv = await db.conversation.findUniqueOrThrow({ where: { id: conversationId } });
+    await setModelMode(ownerId, conv.accountId, "AUTO", true);
+    const chat = await tourFollowup(ownerId, conversationId, "chat");
+    const d1 = await db.draft.findUniqueOrThrow({ where: { id: chat.draftId! } });
+    expect(d1.status).toBe("QUEUED");
+    expect(d1.scheduledFor!.getTime()).toBeGreaterThan(Date.now() + 5000); // waits, never instant
+    const ppv = await tourFollowup(ownerId, conversationId, "ppv");
+    const d2 = await db.draft.findUniqueOrThrow({ where: { id: ppv.draftId! } });
+    expect(d2.body).toMatch(/Autumn Hike/);
+    expect(d2.body).toMatch(/\$12/);
+    expect(d2.body).not.toMatch(/Film Diaries|Kitchen/); // one fitting item, not a menu dump
+    expect(await db.simulatorSent.count()).toBe(0); // nothing sent until the delay passes
+  });
+});
+
+describe("queue timing is time-zone safe", () => {
+  it("never claims a job early when the database session isn't in UTC", async () => {
+    const { claimOne } = await import("@/server/queue/jobs");
+    await db.job.deleteMany({});
+    await db.$executeRawUnsafe(`SET TIME ZONE 'Asia/Tokyo'`); // UTC+9: a naive now() comparison would claim 9 hours early
+    try {
+      const job = await db.job.create({ data: { type: "sync_account", runAt: new Date(Date.now() + 30 * 60000), maxAttempts: 3 } });
+      expect(await claimOne("tz-test")).toBeNull();
+      await db.job.update({ where: { id: job.id }, data: { runAt: new Date(Date.now() - 1000) } });
+      const claimed = await claimOne("tz-test");
+      expect(claimed?.id).toBe(job.id);
+      const row = await db.job.findUniqueOrThrow({ where: { id: job.id } });
+      expect(Math.abs(row.lockedAt!.getTime() - Date.now())).toBeLessThan(60_000); // lockedAt recorded in UTC
+    } finally {
+      await db.$executeRawUnsafe(`SET TIME ZONE 'UTC'`);
+    }
+  });
+});

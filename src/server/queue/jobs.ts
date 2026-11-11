@@ -60,10 +60,10 @@ export async function cancelJobs(tx: Tx, where: { conversationId: string; types:
  */
 export async function claimOne(workerId: string): Promise<Job | null> {
   const rows = await db().$queryRawUnsafe<Job[]>(
-    `UPDATE "Job" SET "status" = 'RUNNING', "lockedAt" = now(), "lockedBy" = $1, "attempts" = "attempts" + 1
+    `UPDATE "Job" SET "status" = 'RUNNING', "lockedAt" = (now() AT TIME ZONE 'UTC'), "lockedBy" = $1, "attempts" = "attempts" + 1
      WHERE "id" = (
        SELECT j."id" FROM "Job" j
-       WHERE j."status" = 'PENDING' AND j."runAt" <= now()
+       WHERE j."status" = 'PENDING' AND j."runAt" <= (now() AT TIME ZONE 'UTC')
          AND (j."conversationId" IS NULL OR NOT EXISTS (
            SELECT 1 FROM "Job" r WHERE r."conversationId" = j."conversationId" AND r."status" = 'RUNNING'))
        ORDER BY j."runAt" ASC

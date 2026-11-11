@@ -55,7 +55,7 @@ export const rulesSchema = z.object({
     tag: z.string().max(20),
   }),
   ai: z.object({ maxRewrites: z.number().int().min(0).max(1), contextMessages: z.number().int().min(2).max(40) }),
-  offers: z.object({ declineCooldownDays: z.number().int().min(0).max(365) }),
+  offers: z.object({ declineCooldownDays: z.number().int().min(0).max(365), offerCooldownHours: z.number().min(0).max(168).default(6) }),
   notifications: z.object({ cooldownMin: z.number().int().min(0).max(1440), telegramIncludeBodies: z.boolean() }),
 });
 
@@ -87,7 +87,7 @@ export const DEFAULT_RULES: Rules = {
   },
   disclosure: { mode: "first_ai_message", tag: "#ai" },
   ai: { maxRewrites: 1, contextMessages: 12 },
-  offers: { declineCooldownDays: 14 },
+  offers: { declineCooldownDays: 14, offerCooldownHours: 6 },
   notifications: { cooldownMin: 10, telegramIncludeBodies: false },
 };
 

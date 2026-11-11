@@ -2,14 +2,18 @@ import { db } from "./db";
 import { DEFAULT_RULES } from "./automation/settings";
 import { DEFAULT_STYLE } from "./ai/style";
 import { EVAL_CASES } from "./evals/cases";
+import { CATALOGS, CREATORS } from "./evals/chat-scenarios";
 import { hashPassword } from "./auth/password";
 
 const H = 3600_000;
 
 /** Fictional, non-explicit demo data for the simulator. Safe to run repeatedly. */
 export async function seedSimulator() {
-  const existing = await db().creatorAccount.findFirst({ where: { isSimulated: true } });
-  if (existing) return existing;
+  const existing = await db().creatorAccount.findFirst({ where: { isSimulated: true }, orderBy: { createdAt: "asc" } });
+  if (existing) {
+    await seedSecondModel();
+    return existing;
+  }
   const account = await db().creatorAccount.create({
     data: {
       displayName: "Mira (Demo)",
@@ -70,7 +74,42 @@ export async function seedSimulator() {
       await db().customer.update({ where: { id: customer.id }, data: { outcome: "DECLINED", declinedAt: new Date(Date.now() - 7 * H), suppressedUntil: new Date(Date.now() + 14 * 24 * H) } });
     }
   }
+  await seedSecondModel();
   return account;
+}
+
+/** A second demo model with a contrasting voice (lowercase, short, emoji), to show per-model personalities. */
+export async function seedSecondModel() {
+  if (await db().creatorAccount.findFirst({ where: { externalAccountId: "sim_acct_luna" } })) return;
+  const account = await db().creatorAccount.create({
+    data: { displayName: "Luna (Demo)", provider: "SIMULATOR", externalAccountId: "sim_acct_luna", isSimulated: true, connectionStatus: "CONNECTED", timezone: "America/Los_Angeles", lastSyncAt: new Date(), lastSyncOkAt: new Date() },
+  });
+  await db().styleProfile.create({ data: { accountId: account.id, version: 1, active: true, data: CREATORS.luna, changeNote: "Initial style pack (demo)" } });
+  for (const [i, c] of CATALOGS.luna.entries()) {
+    await db().catalogItem.create({ data: { accountId: account.id, externalAssetId: `sim_luna_asset_${i}`, title: c.title, description: c.description, priceCents: c.priceCents, priceConfirmed: true } });
+  }
+  const fans: { ext: string; name: string; msgs: [("in" | "out"), string, number][] }[] = [
+    { ext: "sim_luna_riley", name: "Riley", msgs: [["in", "hiii luna", -0.3]] },
+    { ext: "sim_luna_max", name: "Max", msgs: [["in", "ur skate clips are so sick", -6], ["out", "omg ty 🛹 that park is my fave", -5.8], ["in", "do u have a longer skate vid?", -0.1]] },
+  ];
+  for (const f of fans) {
+    const customer = await db().customer.create({ data: { accountId: account.id, externalId: f.ext, displayName: f.name, tags: [] } });
+    const conv = await db().conversation.create({ data: { accountId: account.id, customerId: customer.id, externalChatId: f.ext } });
+    let lastIn: Date | null = null, lastOut: Date | null = null, firstUnanswered: Date | null = null;
+    for (const [i, [dir, text, hours]] of f.msgs.entries()) {
+      const at = new Date(Date.now() + hours * H);
+      await db().message.create({ data: { conversationId: conv.id, direction: dir === "in" ? "INBOUND" : "OUTBOUND", origin: dir === "in" ? "CUSTOMER" : "HUMAN", body: text, externalId: `seed_${f.ext}_${i}`, sentAt: at } });
+      if (dir === "in") {
+        lastIn = at;
+        firstUnanswered = firstUnanswered ?? at;
+      } else {
+        lastOut = at;
+        firstUnanswered = null;
+      }
+    }
+    await db().conversation.update({ where: { id: conv.id }, data: { lastInboundAt: lastIn, lastOutboundAt: lastOut, firstUnansweredAt: firstUnanswered, unreadCount: firstUnanswered ? 1 : 0, version: f.msgs.length } });
+    if (firstUnanswered) await db().job.create({ data: { type: "generate_reply", conversationId: conv.id, runAt: new Date(), dedupeKey: `gen:${conv.id}`, firstEventAt: new Date(), maxAttempts: 3 } });
+  }
 }
 
 export async function seedEvalCases() {

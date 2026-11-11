@@ -117,3 +117,57 @@ No repository was installed merely because it mentions OnlyFans.
 5. Fans API's free-credit figures and plan details conflict between pages.
 6. Deadline for the `app.onlyfansapi.com` → `api.fansapi.com` migration.
 7. Exact text-formatting rules (HTML?) for send. We send plain text.
+
+## 9. Chat datasets: what was checked, what was used (2026-11-11)
+
+The goal was to make the AI chat like a real creator DM thread, not to collect data. All five datasets were inspected through their Hugging Face cards, metadata and the dataset viewer ("first rows", aggregate statistics only). No dataset files were downloaded, and **no dataset record is copied into the product, its prompts or its tests**.
+
+| Dataset | License | Content | Decision |
+|---|---|---|---|
+| raylek/kassyy-chatter-v2 | "other" (unspecified) | Fine-tuning windows "distilled from ~1,300 real fan conversations", with per-fan summaries, PPV action tokens and a 6h script cooling rule | **Records not used.** Real subscribers' private messages, no stated consent, unclear license. The *design ideas* on its public card were used: per-fan brief (who / what works / what to avoid), a cooling period between offers, tracking what was bought. |
+| PygmalionAI/PIPPA | Apache-2.0 | ~26k Character.AI roleplay logs, NSFW warning, user-submitted with PII redaction attempts | **Records not used.** Long narrated roleplay (asterisk actions, essays) is the opposite of DM style, and much of it is explicit. Insight used: persona definitions work best with short example dialogues, so each model's example replies are injected and selected by relevance. |
+| backpropSukuna/wifu-chat-dataset | Apache-2.0 | 403 synthetic "companion" chats, includes NSFW categories | **Records not used.** Non-explicit categories were analysed as a *negative reference*: median assistant reply 490 characters, emoji in 100% of replies, a question in 56%, narrated *actions* in 23%. That is what "AI-sounding" chat looks like, and the prompt and validator steer away from it. |
+| utsavm/NSFW_Chat_Dataset | Apache-2.0 | Explicit erotic roleplay pairs | **Excluded entirely.** This product does not generate sexual content; explicit requests go to a person. |
+| shirshatzman/flirtflip-dataset | MIT | 1,071 synthetic one-liners rewritten as gentle / playful / bold | **Records not used.** The lines are in-person dating openers, and 20% of the "bold" ones push meeting up or asking for a number, which this product never does. Insight used: the same message at three intensities, 50–60 characters each, maps onto the personality presets and the Reserved↔Expressive slider. |
+
+Fine-tuning was not justified: there is no clean, permitted, non-explicit creator-DM dataset. The approach is **better prompting, plus original examples, plus deterministic chat signals in code**:
+
+- `src/server/ai/chatcraft.ts`:
+  - Situation detection: greeting, small talk, compliment, reaction, goodbye, content or price question, buying interest, hesitation, decline, money worries, AI question, meet-up request, "are you online".
+  - Subscriber style: their length, case and emoji, which become a length target for the reply.
+  - Offer policy:
+    - None by default.
+    - "answer" when they ask.
+    - "suggest one fitting item" on genuine interest.
+    - A cooling period after an offer (6h by default) and after a "no" (14 days by default).
+    - Never re-offer what they bought.
+  - Per-fan brief (memory).
+  - Original "good move" examples per situation.
+- **Prompt `reply-v2.0`** (`src/server/ai/prompt.ts`):
+  - DM rules: short turns, react first, optional questions, no narration or customer-service phrases, answer bursts together, WAIT when nothing needs saying.
+  - Sections fed to the model: situation, offer policy, subscriber style, remembered facts and "latest messages".
+  - New output fields `offer_item` and `remember`.
+- **Validator:**
+  - New warnings: question streaks, much longer than the subscriber, narration, repeated offers.
+  - New block: unprompted offers.
+  - Style problems now get one rewrite.
+- **Memory:** facts the AI chooses to remember are stored on the subscriber (max 12, service-relevant only) and fed back in the brief.
+
+### Measured effect (sample-reply engine, 33 original scenarios, `tests/chat-quality.test.ts`)
+
+| Metric | Before | After |
+|---|---|---|
+| Duplicate replies across scenarios | 18 | 0 |
+| Generic customer-service phrasing | 57% | 0% |
+| Replies that ask a question | 61% | 21% |
+| Missed genuine buying moments | 2 | 0 |
+| Offers nobody asked for | 0 | 0 |
+| "Goodnight" correctly left unanswered | 0/1 | 1/1 |
+| Median reply length | 76 chars | 53 chars |
+
+The original 81-case safety/action set went from 96% to 100% correct next actions, with 0 forbidden-phrase hits.
+
+**Not measured:** how much prompt v2.0 improves a *real* model (DeepSeek or another provider). No key was available. Once one is connected:
+1. Run Settings → AI personality → Advanced → Reply quality lab.
+2. Compare it with a run of the previous commit.
+3. Read the replies.

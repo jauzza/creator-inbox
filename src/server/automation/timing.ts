@@ -97,6 +97,8 @@ export type ScheduleInput = {
   rng?: Rng;
   sentLastHour?: number;
   sentLastDay?: number;
+  /** Length of the reply; adds a short, human-like "typing" pause (about 8 characters a second, max 40s). */
+  replyChars?: number;
 };
 export type ScheduleResult =
   | { ok: true; generateAt: Date; sendAt: Date; delaySec: number; steps: string[] }
@@ -116,9 +118,10 @@ export function planReply(input: ScheduleInput): ScheduleResult {
   if ((input.sentLastHour ?? 0) >= rules.caps.perChatPerHour) return { ok: false, reason: `Hourly cap reached (${rules.caps.perChatPerHour}/chat)`, steps };
   if ((input.sentLastDay ?? 0) >= rules.caps.perChatPerDay) return { ok: false, reason: `Daily cap reached (${rules.caps.perChatPerDay}/chat)`, steps };
   const preset = input.isFirstReply ? rules.firstReply : rules.ongoing;
-  const delaySec = sampleDelaySec(preset, input.rng);
+  const typingSec = input.replyChars ? Math.min(40, Math.round(input.replyChars / 8)) : 0;
+  const delaySec = sampleDelaySec(preset, input.rng) + typingSec;
   const raw = new Date(generateAt.getTime() + delaySec * 1000);
-  steps.push(`${input.isFirstReply ? "First-reply" : "Ongoing"} delay ${delaySec}s (${preset.distribution}, ${preset.minSec}–${preset.maxSec}s) → ${fmt(raw)}`);
+  steps.push(`${input.isFirstReply ? "First-reply" : "Ongoing"} delay ${delaySec - typingSec}s (${preset.distribution}, ${preset.minSec}–${preset.maxSec}s)${typingSec ? ` + ${typingSec}s typing time` : ""} → ${fmt(raw)}`);
   const sendAt = nextSendableTime(raw, rules);
   if (!sendAt) return { ok: false, reason: "No sendable time in the next 8 days; check active/quiet hours", steps };
   if (sendAt.getTime() !== raw.getTime()) steps.push(`${isSendableTime(raw, rules).why}; deferred to ${fmt(sendAt)} (${rules.activeHours.timezone})`);

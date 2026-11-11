@@ -20,7 +20,7 @@ async function tourConversation(accountId: string) {
 
 /** Start fresh: remove the previous test conversation, then deliver the test customer's message. */
 export async function tourReceive(userId: string) {
-  const acct = (await db().creatorAccount.findFirst({ where: { isSimulated: true } })) ?? (await seedSimulator());
+  const acct = (await db().creatorAccount.findFirst({ where: { isSimulated: true }, orderBy: { createdAt: "asc" } })) ?? (await seedSimulator());
   const old = await tourConversation(acct.id);
   if (old) await db().customer.delete({ where: { id: old.customerId } });
   await deliverSimulated(TOUR_CHAT_ID, TOUR_CUSTOMER, TOUR_MESSAGE);
@@ -30,6 +30,20 @@ export async function tourReceive(userId: string) {
   await db().$transaction((tx) => cancelJobs(tx, { conversationId: conv.id, types: ["generate_reply"] }, "Guided tour drafts on request"));
   await audit("tour.test_message", { actorId: userId, target: conv.id });
   return { conversationId: conv.id };
+}
+
+export const TOUR_FOLLOWUPS = {
+  chat: "also, how often do you post new stuff?",
+  ppv: "omg I love hiking too. do you have any of your hiking photos? i'd love to see them",
+} as const;
+
+/** The test subscriber writes again (small talk, or genuine interest in paid content), and the AI answers right away. */
+export async function tourFollowup(userId: string, conversationId: string, kind: keyof typeof TOUR_FOLLOWUPS) {
+  const conv = await db().conversation.findUnique({ where: { id: conversationId }, include: { account: true } });
+  if (!conv || !conv.account.isSimulated || conv.externalChatId !== TOUR_CHAT_ID) throw new HttpError(400, "That isn't the tour's test conversation");
+  await deliverSimulated(TOUR_CHAT_ID, TOUR_CUSTOMER, TOUR_FOLLOWUPS[kind]);
+  await audit("tour.followup", { actorId: userId, target: conversationId, details: { kind } });
+  return tourDraft(userId, conversationId);
 }
 
 /** Draft a reply now, through the normal pipeline (policy → AI → validator → draft). */
