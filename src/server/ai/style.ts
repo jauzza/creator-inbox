@@ -60,3 +60,19 @@ export const DEFAULT_STYLE: Style = {
 };
 
 export const MAX_CHARS: Record<Style["replyLength"], number> = { short: 240, medium: 480, long: 900 };
+
+/**
+ * Neutral starting personality for a newly connected real account: its own name, no invented facts,
+ * no example replies. The owner fills in facts, examples and the PPV menu during setup.
+ */
+export function starterStyle(name: string): Style {
+  return {
+    ...DEFAULT_STYLE,
+    creatorName: name.replace(/\s*\(.*?\)\s*$/, "").slice(0, 60) || "Creator",
+    publicFacts: [],
+    preferredExpressions: [],
+    avoidPhrases: ["as an AI", "How can I assist you today?", "dear valued customer"],
+    goodExamples: [],
+    badExamples: DEFAULT_STYLE.badExamples,
+  };
+}

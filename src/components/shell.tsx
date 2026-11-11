@@ -1,13 +1,13 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { Bell, Compass, Home, Inbox, LogOut, MessageCircleHeart, MoreHorizontal, OctagonX, Settings } from "lucide-react";
-import { Badge, Button, cn, Dialog, ToastProvider, useAction, type Mode } from "./ui";
+import { Badge, Button, cn, Dialog, Menu, Popover, ToastProvider, useAction, type Mode } from "./ui";
 import { post, setCsrf, useApi, ago } from "@/lib/client";
 import { TourProvider, useTour } from "./tour/tour";
 
-export type Me = { id: string; email: string; name: string; role: "OWNER" | "OPERATOR"; csrfToken: string };
+export type Me = { id: string; email: string; name: string; role: "OWNER" | "OPERATOR"; csrfToken: string; onboarded: boolean; tourDone: boolean };
 
 const NAV = [
   { href: "/", label: "Home", icon: Home, tour: "nav-home" },
@@ -21,13 +21,21 @@ function summary(auto: AutoState) {
   const models = auto.accounts ?? [];
   const autoN = models.filter((m) => m.mode === "AUTO").length;
   if (auto.emergencyStop) return { label: "Sending stopped", tone: "danger" as const, hint: "Nothing will be sent until you release the stop." };
-  if (autoN) return { label: `Auto-reply on · ${autoN} of ${models.length}`, tone: "ok" as const, hint: `${models.filter((m) => m.mode === "AUTO").map((m) => m.displayName.replace(" (Demo)", "")).join(", ")} ${autoN === 1 ? "replies" : "reply"} by itself. Others wait for you.` };
+  if (autoN) return { label: `Auto-reply on · ${autoN} of ${models.length}`, tone: "ok" as const, hint: `${models.filter((m) => m.mode === "AUTO").map((m) => m.displayName.replace(/ \((Demo|Practice)\)$/, "")).join(", ")} ${autoN === 1 ? "replies" : "reply"} by itself. Others wait for you.` };
   if (models.length && models.every((m) => m.mode === "PAUSED" || m.mode === "MANUAL")) return { label: "AI off", tone: "danger" as const, hint: "No drafts and no automatic replies." };
   return { label: "Drafts only", tone: "accent" as const, hint: "The AI writes drafts. You approve every send." };
 }
 type ShellCtx = { me: Me; auto: AutoState | null; reloadAuto: () => void; openStop: () => void; attention: number };
 const Ctx = createContext<ShellCtx | null>(null);
-export const useShell = () => useContext(Ctx)!;
+const FALLBACK: ShellCtx = {
+  me: { id: "", email: "", name: "", role: "OPERATOR", csrfToken: "", onboarded: true, tourDone: true },
+  auto: null,
+  reloadAuto: () => {},
+  openStop: () => {},
+  attention: 0,
+};
+/** Shell context. Falls back to a safe, read-only default (never null) so a page can't crash outside the shell. */
+export const useShell = () => useContext(Ctx) ?? FALLBACK;
 
 
 
@@ -51,7 +59,7 @@ function ShellInner({ me, children }: { me: Me; children: ReactNode }) {
   }, []);
   return (
     <Ctx.Provider value={ctx}>
-      <TourProvider onEmergency={openStop} stopOn={!!auto.data?.emergencyStop}>
+      <TourProvider onEmergency={openStop} stopOn={!!auto.data?.emergencyStop} mandatory={me.onboarded && !me.tourDone}>
         <Frame>{children}</Frame>
         <EmergencyDialog open={stopOpen} onClose={() => setStopOpen(false)} />
       </TourProvider>
@@ -61,7 +69,30 @@ function ShellInner({ me, children }: { me: Me; children: ReactNode }) {
 
 function Frame({ children }: { children: ReactNode }) {
   const path = usePathname();
+  const router = useRouter();
   const { me, auto, attention } = useShell();
+  const inSetup = path.startsWith("/onboarding");
+  // First-run setup is mandatory: until it's finished, every page leads to it.
+  useEffect(() => {
+    if (!me.onboarded && !inSetup) router.replace("/onboarding");
+  }, [me.onboarded, inSetup, router]);
+  if (!me.onboarded && !inSetup) return null;
+  if (inSetup)
+    return (
+      <div className="min-h-dvh">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-line bg-bg/90 px-4 backdrop-blur-xl sm:px-6">
+          <Logo />
+          <span className="text-[14px] font-semibold tracking-[-0.01em]">Creator Inbox</span>
+          <span className="hidden text-[13px] text-faint sm:inline">/ Setup</span>
+          <div className="ml-auto flex items-center gap-1">
+            {auto && (auto.accounts?.length ?? 0) > 0 && <StopButton compact />}
+            <span className="hidden px-2 text-[13px] text-muted sm:inline">{me.email}</span>
+            <SignOut />
+          </div>
+        </header>
+        <main className="px-4 pb-16 pt-6 sm:px-6 sm:pt-10">{children}</main>
+      </div>
+    );
   const fullBleed = path.startsWith("/inbox");
   const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
@@ -88,7 +119,7 @@ function Frame({ children }: { children: ReactNode }) {
               <n.icon className={cn("size-[17px] shrink-0", isActive(n.href) ? "text-accent" : "text-faint group-hover:text-muted")} aria-hidden />
               {n.label}
               {n.href === "/inbox" && attention > 0 && (
-                <span className="ml-auto rounded-full bg-warn/15 px-1.5 text-[11px] font-semibold tabular-nums text-warn" title={`${attention} conversation(s) need you`}>
+                <span className="ml-auto rounded-md bg-panel-3 px-1.5 text-[11px] font-semibold tabular-nums text-fg" title={`${attention} conversation(s) need you`}>
                   {attention}
                 </span>
               )}
@@ -141,8 +172,8 @@ function Frame({ children }: { children: ReactNode }) {
 
 function Logo() {
   return (
-    <span className="flex size-7 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-[#5b5ce0] shadow-[0_4px_14px_-4px_var(--color-accent)]">
-      <MessageCircleHeart className="size-4 text-white" aria-hidden />
+    <span className="flex size-7 items-center justify-center rounded-lg bg-fg">
+      <MessageCircleHeart className="size-4 text-bg" aria-hidden />
     </span>
   );
 }
@@ -304,60 +335,43 @@ function SignOut() {
 }
 
 function MobileMore() {
-  const [open, setOpen] = useState(false);
   const tour = useTour();
   return (
-    <div className="relative">
-      <Button size="icon" variant="ghost" aria-label="More" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <MoreHorizontal className="size-4" />
-      </Button>
-      {open && (
-        <div className="absolute right-0 top-10 z-50 w-56 animate-pop rounded-xl border border-line-strong bg-panel-2 p-1 shadow-2xl" onMouseLeave={() => setOpen(false)}>
-          <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] hover:bg-panel-3" onClick={() => { setOpen(false); tour.start(); }}>
-            <Compass className="size-4 text-faint" /> Guided tour
-          </button>
-          <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] hover:bg-panel-3" onClick={async () => { await post("/api/auth/logout", {}); location.href = "/login"; }}>
-            <LogOut className="size-4 text-faint" /> Sign out
-          </button>
-        </div>
-      )}
-    </div>
+    <Menu.Root>
+      <Menu.Trigger asChild>
+        <Button size="icon" variant="ghost" aria-label="More">
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </Menu.Trigger>
+      <Menu.Content>
+        <Menu.Item onSelect={() => tour.start()} className="items-center">
+          <Compass className="size-4 text-faint" /> Guided tour
+        </Menu.Item>
+        <Menu.Separator />
+        <Menu.Item onSelect={async () => { await post("/api/auth/logout", {}); location.href = "/login"; }} className="items-center">
+          <LogOut className="size-4 text-faint" /> Sign out
+        </Menu.Item>
+      </Menu.Content>
+    </Menu.Root>
   );
 }
 
 function Notifications() {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
   const n = useApi<{ unread: number; items: { id: string; title: string; body: string; link: string | null; readAt: string | null; createdAt: string }[] }>("/api/notifications", { poll: 15000 });
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    const k = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", h);
-    document.addEventListener("keydown", k);
-    return () => {
-      document.removeEventListener("mousedown", h);
-      document.removeEventListener("keydown", k);
-    };
-  }, [open]);
   return (
-    <div className="relative" ref={ref}>
-      <Button size="icon" variant="ghost" aria-label={`Notifications${n.data?.unread ? ` (${n.data.unread} unread)` : ""}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <Bell className="size-4" />
-        {!!n.data?.unread && <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-accent ring-2 ring-bg" aria-hidden />}
-      </Button>
-      {open && (
-        <div className="absolute right-0 top-10 z-50 w-[min(92vw,360px)] animate-pop rounded-xl border border-line-strong bg-panel-2 shadow-2xl lg:left-0 lg:right-auto">
+    <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Trigger asChild>
+        <Button size="icon" variant="ghost" aria-label={`Notifications${n.data?.unread ? ` (${n.data.unread} unread)` : ""}`}>
+          <Bell className="size-4" />
+          {!!n.data?.unread && <span className="absolute right-2 top-2 size-1.5 rounded-full bg-fg ring-2 ring-bg" aria-hidden />}
+        </Button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content align="start" sideOffset={6} collisionPadding={12} className="z-[110] w-[min(92vw,360px)] animate-fade-in rounded-xl border border-line-strong bg-panel-2 shadow-2xl outline-none">
           <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
             <span className="text-[13px] font-semibold">Notifications</span>
-            <Button
-              size="xs"
-              variant="ghost"
-              onClick={async () => {
-                await post("/api/notifications", { all: true });
-                n.reload();
-              }}
-            >
+            <Button size="xs" variant="ghost" onClick={async () => { await post("/api/notifications", { all: true }); n.reload(); }}>
               Mark all read
             </Button>
           </div>
@@ -365,9 +379,9 @@ function Notifications() {
             {n.data?.items.length === 0 && <li className="px-3 py-6 text-center text-[13px] text-muted">You're all caught up.</li>}
             {n.data?.items.map((i) => (
               <li key={i.id}>
-                <Link href={fixLink(i.link)} onClick={() => setOpen(false)} className={cn("block rounded-lg px-3 py-2.5 hover:bg-panel-3", !i.readAt && "bg-accent/6")}>
+                <Link href={fixLink(i.link)} onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2.5 hover:bg-panel-3">
                   <p className="flex items-center gap-1.5 text-[13px] font-medium">
-                    {!i.readAt && <span className="size-1.5 rounded-full bg-accent" aria-label="unread" />}
+                    {!i.readAt && <span className="size-1.5 rounded-full bg-fg" aria-label="unread" />}
                     {i.title}
                   </p>
                   <p className="mt-0.5 text-xs leading-relaxed text-muted">{i.body}</p>
@@ -376,9 +390,9 @@ function Notifications() {
               </li>
             ))}
           </ul>
-        </div>
-      )}
-    </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 

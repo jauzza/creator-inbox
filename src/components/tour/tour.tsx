@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, Loader2, MousePointerClick, OctagonX, X } from "lucide-react";
 import { Button, cn, useToast } from "../ui";
-import { humanize } from "@/lib/client";
+import { humanize, post } from "@/lib/client";
 import { STEPS, CHAPTERS, type TourStep, type TourData } from "./steps";
 
 /**
@@ -42,7 +42,7 @@ type Ctx = {
 const TourCtx = createContext<Ctx>({ active: false, step: null, index: 0, saved: EMPTY, data: {}, busy: false, start: () => {}, exit: () => {}, signal: () => {}, setData: () => {} });
 export const useTour = () => useContext(TourCtx);
 
-export function TourProvider({ children, onEmergency, stopOn }: { children: ReactNode; onEmergency: () => void; stopOn: boolean }) {
+export function TourProvider({ children, onEmergency, stopOn, mandatory = false }: { children: ReactNode; onEmergency: () => void; stopOn: boolean; mandatory?: boolean }) {
   const [saved, setSaved] = useState<Saved>(EMPTY);
   const [active, setActive] = useState(false);
   const [index, setIndex] = useState(0);
@@ -57,7 +57,15 @@ export function TourProvider({ children, onEmergency, stopOn }: { children: Reac
 
   // Resume automatically after a reload or navigation if the tour was running (not if the user exited).
   useEffect(() => {
-    const s = load();
+    let s = load();
+    // The first tour after setup is required: it starts by itself (and resumes after reloads) until finished.
+    // Closing it (Esc / ✕) only pauses it for this browser session, so nobody is ever trapped.
+    if (mandatory && sessionStorage.getItem("ci.tour.paused") !== "1" && !(s.running && s.stepId)) {
+      s = { ...EMPTY, running: true, stepId: STEPS[0].id };
+      try {
+        localStorage.setItem(KEY, JSON.stringify(s));
+      } catch {}
+    }
     setSaved(s);
     if (s.running && !s.finished && s.stepId) {
       const i = STEPS.findIndex((x) => x.id === s.stepId);
@@ -66,6 +74,7 @@ export function TourProvider({ children, onEmergency, stopOn }: { children: Reac
         setActive(true);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const persist = useCallback((next: Saved) => {
     savedRef.current = next; // keep sequential updates (complete → go) from overwriting each other
@@ -103,10 +112,11 @@ export function TourProvider({ children, onEmergency, stopOn }: { children: Reac
     if (index >= STEPS.length - 1) {
       persist({ ...savedRef.current, finished: true, stepId: null, running: false });
       setActive(false);
+      if (mandatory) post("/api/onboarding", { action: "tour_done" }).then(() => router.refresh()).catch(() => {});
       return;
     }
     go(index + 1);
-  }, [step, index, go, complete, persist]);
+  }, [step, index, go, complete, persist, mandatory, router]);
 
   const back = useCallback(() => go(index - 1), [go, index]);
 
@@ -126,8 +136,9 @@ export function TourProvider({ children, onEmergency, stopOn }: { children: Reac
   const exit = useCallback(() => {
     persist({ ...savedRef.current, running: false });
     setActive(false);
-    toast("Tour paused. Resume it any time from “Guided tour”.", "info");
-  }, [toast, persist]);
+    if (mandatory) sessionStorage.setItem("ci.tour.paused", "1");
+    toast(mandatory ? "Tour paused. It continues next time you open the app, or from “Guided tour”." : "Tour paused. Resume it any time from “Guided tour”.", "info");
+  }, [toast, persist, mandatory]);
 
   // Task completion: either a signal from the UI or a route condition.
   const signal = useCallback(
@@ -214,6 +225,7 @@ export function TourProvider({ children, onEmergency, stopOn }: { children: Reac
           onSkipStep={next}
           onBack={back}
           onExit={exit}
+          canSkipTour={!mandatory}
           onSkipTour={() => {
             persist({ ...savedRef.current, finished: true, stepId: null, running: false });
             setActive(false);
@@ -238,7 +250,7 @@ function findTarget(name: string): HTMLElement | null {
   }) ?? null;
 }
 
-function Overlay({ step, index, data, busy, done, onNext, onSkipStep, onBack, onExit, onSkipTour, onEmergency, stopOn }: { step: TourStep; index: number; data: TourData; busy: boolean; done: boolean; onNext: () => void; onSkipStep: () => void; onBack: () => void; onExit: () => void; onSkipTour: () => void; onEmergency: () => void; stopOn: boolean }) {
+function Overlay({ step, index, data, busy, done, onNext, onSkipStep, onBack, onExit, onSkipTour, canSkipTour, onEmergency, stopOn }: { step: TourStep; index: number; data: TourData; busy: boolean; done: boolean; onNext: () => void; onSkipStep: () => void; onBack: () => void; onExit: () => void; onSkipTour: () => void; canSkipTour: boolean; onEmergency: () => void; stopOn: boolean }) {
   const [rect, setRect] = useState<Rect | null>(null);
   const [missing, setMissing] = useState(false);
   const [vp, setVp] = useState({ w: 1200, h: 800 });
@@ -252,14 +264,23 @@ function Overlay({ step, index, data, busy, done, onNext, onSkipStep, onBack, on
     setMissing(false);
     if (!step.target) return;
     let raf = 0;
+    let scrolledAt = 0;
+    let jumped = false;
     const startedAt = performance.now();
     let last = "";
     const measure = () => {
       const el = findTarget(step.target!);
       if (el) {
+        const block = el.getBoundingClientRect().height > window.innerHeight * 0.6 ? "start" : "center";
         if (scrolledFor.current !== step.id) {
           scrolledFor.current = step.id;
-          el.scrollIntoView({ block: el.getBoundingClientRect().height > window.innerHeight * 0.6 ? "start" : "center", inline: "nearest", behavior: "smooth" });
+          scrolledAt = performance.now();
+          el.scrollIntoView({ block, inline: "nearest", behavior: "smooth" });
+        } else if (!jumped && performance.now() - scrolledAt > 800) {
+          // Fallback: if smooth scrolling didn't bring it into view (throttled tab, reduced motion), jump there.
+          const rr = el.getBoundingClientRect();
+          if (rr.bottom < 0 || rr.top > window.innerHeight) el.scrollIntoView({ block, inline: "nearest", behavior: "auto" });
+          jumped = true;
         }
         const r = el.getBoundingClientRect();
         const key = `${Math.round(r.top)}:${Math.round(r.left)}:${Math.round(r.width)}:${Math.round(r.height)}`;
@@ -268,7 +289,7 @@ function Overlay({ step, index, data, busy, done, onNext, onSkipStep, onBack, on
           setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
           setMissing(false);
         }
-      } else if (performance.now() - startedAt > 6000) {
+      } else if (performance.now() - startedAt > (step.skipIfMissing ? 2500 : 6000)) {
         setMissing(true);
       }
     };
@@ -311,7 +332,9 @@ function Overlay({ step, index, data, busy, done, onNext, onSkipStep, onBack, on
   const mobile = vp.w < 640;
   const hole = rect && !missing ? { top: rect.top - PAD, left: rect.left - PAD, width: rect.width + PAD * 2, height: rect.height + PAD * 2 } : null;
   const centered = !step.target || missing || !hole;
-  const interactive = !!step.task || step.interactive;
+  const fallback = missing && !!step.skipIfMissing;
+  const task = fallback ? undefined : step.task;
+  const interactive = !!task || step.interactive;
 
   // Popover placement next to the hole, flipped/clamped to stay on screen.
   const popW = Math.min(380, vp.w - 24);
@@ -344,7 +367,7 @@ function Overlay({ step, index, data, busy, done, onNext, onSkipStep, onBack, on
   const chIndex = CHAPTERS.findIndex((c) => c.id === step.chapter);
   const stepsInChapter = STEPS.filter((s) => s.chapter === step.chapter);
   const posInChapter = stepsInChapter.findIndex((s) => s.id === step.id);
-  const body = typeof step.body === "function" ? step.body(data) : step.body;
+  const body = fallback ? <p>{step.skipIfMissing}</p> : typeof step.body === "function" ? step.body(data) : step.body;
   const dim = "pointer-events-auto bg-[rgb(4_4_8/0.62)] backdrop-blur-[3px] transition-all duration-300 ease-out";
   const block = (e: React.MouseEvent) => e.stopPropagation();
 
@@ -408,20 +431,20 @@ function Overlay({ step, index, data, busy, done, onNext, onSkipStep, onBack, on
           <div id="tour-body" className="mt-1.5 space-y-2 text-[13.5px] leading-relaxed text-muted [&_b]:font-medium [&_b]:text-fg">
             {body}
           </div>
-          {step.task && (
-            <div className={cn("mt-3 flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-[13px] transition-colors", done ? "border-ok/40 bg-ok/10 text-ok" : "border-accent/30 bg-accent/8 text-fg")}>
+          {task && (
+            <div className={cn("mt-3 flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-[13px] transition-colors", done ? "border-line-strong bg-panel-2 text-fg" : "border-line-strong bg-panel-2 text-fg")}>
               {done ? <Check className="size-4 shrink-0" aria-hidden /> : <MousePointerClick className="size-4 shrink-0 text-accent" aria-hidden />}
-              <span>{done ? "Nice, that's it!" : <><span className="font-medium">Your turn:</span> {step.task.label}</>}</span>
+              <span>{done ? "Nice, that's it!" : <><span className="font-medium">Your turn:</span> {task.label}</>}</span>
             </div>
           )}
-          {missing && step.target && <p className="mt-2 text-xs text-faint">We couldn't find this part of the screen right now, so here's the explanation on its own.</p>}
+          {missing && step.target && !step.skipIfMissing && <p className="mt-2 text-xs text-faint">We couldn't find this part of the screen right now, so here's the explanation on its own.</p>}
         </div>
         <div className="flex items-center justify-between gap-2 border-t border-line px-4 py-3">
           <div className="flex items-center gap-1">
             <Button size="sm" variant="ghost" onClick={onBack} disabled={index === 0 || busy} aria-label="Previous step">
               <ArrowLeft className="size-3.5" /> Back
             </Button>
-            {index < STEPS.length - 1 && (
+            {canSkipTour && index < STEPS.length - 1 && (
               <Button size="sm" variant="ghost" onClick={onSkipTour} className="text-faint">
                 Skip tour
               </Button>
@@ -429,7 +452,7 @@ function Overlay({ step, index, data, busy, done, onNext, onSkipStep, onBack, on
           </div>
           {step.primary ? (
             <div className="flex items-center gap-1">
-              {step.task === undefined && step.primary.optional && (
+              {!task && step.primary.optional && (
                 <Button size="sm" variant="ghost" onClick={onSkipStep} disabled={busy}>
                   Skip
                 </Button>
@@ -440,10 +463,10 @@ function Overlay({ step, index, data, busy, done, onNext, onSkipStep, onBack, on
               </Button>
             </div>
           ) : (
-            <Button size="sm" variant={step.task ? "secondary" : "primary"} onClick={onSkipStep} disabled={busy}>
+            <Button size="sm" variant={task ? "secondary" : "primary"} onClick={onSkipStep} disabled={busy}>
               {busy ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              {step.task ? "Skip this step" : index === STEPS.length - 1 ? "Finish" : "Next"}
-              {!step.task && <ArrowRight className="size-3.5" />}
+              {task ? "Skip this step" : index === STEPS.length - 1 ? "Finish" : "Next"}
+              {!task && <ArrowRight className="size-3.5" />}
             </Button>
           )}
         </div>

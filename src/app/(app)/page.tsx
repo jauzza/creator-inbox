@@ -2,76 +2,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowRight, CheckCircle2, Compass, Plug, Sparkles } from "lucide-react";
-import { Avatar, Badge, cn, ErrorBox, Notice, SimBadge, Skeleton, TechDetails } from "@/components/ui";
+import { Avatar, Badge, buttonVariants, cn, Empty, ErrorBox, Notice, SimBadge, Skeleton, TechDetails } from "@/components/ui";
 import { ModelSwitch } from "@/components/model-switch";
 import { ago, useApi } from "@/lib/client";
 import { useShell } from "@/components/shell";
 import { useTour } from "@/components/tour/tour";
 
 export default function HomePage() {
-  const [welcome, setWelcome] = useState<boolean | null>(null);
-  const tour = useTour();
-  useEffect(() => setWelcome(localStorage.getItem("ci.welcome.done") !== "1"), []);
-  if (welcome === null) return null;
-  if (welcome && !tour.active)
-    return (
-      <Welcome
-        onDemo={() => {
-          localStorage.setItem("ci.welcome.done", "1");
-          setWelcome(false);
-          tour.start({ restart: true });
-        }}
-        onSkip={() => {
-          localStorage.setItem("ci.welcome.done", "1");
-          setWelcome(false);
-        }}
-      />
-    );
   return <Dashboard />;
-}
-
-function Welcome({ onDemo, onSkip }: { onDemo: () => void; onSkip: () => void }) {
-  const { me } = useShell();
-  return (
-    <div className="mx-auto flex min-h-[calc(100dvh-10rem)] max-w-3xl flex-col justify-center py-8">
-      <div className="animate-rise">
-        <p className="text-[13px] font-medium text-accent">Welcome{me.name && me.name !== "Owner" ? `, ${me.name}` : ""} 👋</p>
-        <h1 className="mt-2 text-[34px] font-semibold leading-[1.1] tracking-[-0.03em] sm:text-[42px]">
-          All your fan messages.
-          <br />
-          <span className="text-muted">One calm inbox.</span>
-        </h1>
-        <p className="mt-4 max-w-xl text-[15px] leading-relaxed text-muted">
-          Your AI assistant drafts friendly replies in your own style. You decide what gets sent: approve with one click, edit, or take over whenever you like.
-        </p>
-      </div>
-      <div className="mt-9 grid animate-rise gap-3 [animation-delay:80ms] sm:grid-cols-2">
-        <button type="button" onClick={onDemo} className="group surface-glow rounded-2xl border border-accent/40 p-5 text-left transition-all hover:border-accent hover:shadow-[0_12px_40px_-16px_var(--color-accent)]">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-accent/15 text-accent">
-            <Compass className="size-5" aria-hidden />
-          </span>
-          <p className="mt-4 text-[16px] font-semibold">Explore with a demo</p>
-          <p className="mt-1 text-[13.5px] leading-relaxed text-muted">A 3-minute interactive tour. Watch a test message arrive and see your AI reply. No keys or setup needed.</p>
-          <p className="mt-4 flex items-center gap-1 text-[13px] font-medium text-accent">
-            Start the tour <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
-          </p>
-        </button>
-        <Link href="/setup" onClick={() => localStorage.setItem("ci.welcome.done", "1")} className="group rounded-2xl border border-line bg-panel p-5 transition-all hover:border-line-strong hover:bg-panel-2">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-panel-3 text-fg">
-            <Plug className="size-5" aria-hidden />
-          </span>
-          <p className="mt-4 text-[16px] font-semibold">Set up my account</p>
-          <p className="mt-1 text-[13.5px] leading-relaxed text-muted">Connect your messaging account and AI, test a reply, and choose how much the AI may do. About 10 minutes.</p>
-          <p className="mt-4 flex items-center gap-1 text-[13px] font-medium text-fg">
-            Get started <ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
-          </p>
-        </Link>
-      </div>
-      <button type="button" onClick={onSkip} className="mt-6 self-start text-[13px] text-faint hover:text-muted">
-        Skip for now, take me to my dashboard
-      </button>
-    </div>
-  );
 }
 
 function greeting() {
@@ -120,8 +58,13 @@ function Dashboard() {
       <section aria-labelledby="models" data-tour="home-status">
         <div className="mb-3 flex items-center justify-between">
           <h2 id="models" className="text-[15px] font-semibold tracking-[-0.01em]">Your models</h2>
-          <Link href="/settings/accounts" className="text-[13px] text-muted hover:text-fg">Connect a model</Link>
+          <Link href="/settings/accounts" className="text-[13px] text-muted hover:text-fg">Add a model</Link>
         </div>
+        {d.models.length === 0 && (
+          <Empty title="No models connected yet" action={<Link href="/settings/accounts" className={buttonVariants({ variant: "primary" })}>Connect an account</Link>}>
+            Connect a creator account to start. Each model gets her own AI personality, PPV menu and auto-reply switch.
+          </Empty>
+        )}
         <div className="grid gap-3 md:grid-cols-2">
           {d.models.map((m: any, i: number) => (
             <ModelCard key={m.id} m={m} reload={reload} tourTarget={i === 0 ? "model-switch" : undefined} />
@@ -166,7 +109,7 @@ function Dashboard() {
 }
 
 function ModelCard({ m, reload, tourTarget }: { m: any; reload: () => void; tourTarget?: string }) {
-  const conn = m.isSimulated ? { dot: "bg-info", text: "Demo account" } : m.connectionStatus === "CONNECTED" ? { dot: "bg-ok", text: "Connected" } : { dot: "bg-danger", text: "Needs reconnecting" };
+  const conn = m.isSimulated ? { dot: "bg-faint", text: "Practice account" } : m.connectionStatus === "CONNECTED" ? { dot: "bg-ok", text: "Connected" } : { dot: "bg-danger", text: "Needs reconnecting" };
   const TONE: Record<string, string> = { warm: "Friendly", playful: "Playful", confident: "Confident", professional: "Professional", concise: "Short & sweet" };
   return (
     <div className="rounded-2xl border border-line bg-panel p-4 transition-colors hover:border-line-strong">
@@ -174,7 +117,7 @@ function ModelCard({ m, reload, tourTarget }: { m: any; reload: () => void; tour
         <Avatar name={m.name} size={44} />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em]">
-            <span className="truncate">{m.name.replace(" (Demo)", "")}</span>
+            <span className="truncate">{m.name.replace(/ \((Demo|Practice)\)$/, "")}</span>
             {m.isSimulated && <SimBadge />}
           </p>
           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
@@ -185,7 +128,7 @@ function ModelCard({ m, reload, tourTarget }: { m: any; reload: () => void; tour
         </div>
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <ModelSwitch accountId={m.id} name={m.name.replace(" (Demo)", "")} mode={m.mode} isSimulated={m.isSimulated} onChange={reload} size="sm" tourTarget={tourTarget} />
+        <ModelSwitch accountId={m.id} name={m.name.replace(/ \((Demo|Practice)\)$/, "")} mode={m.mode} isSimulated={m.isSimulated} onChange={reload} size="sm" tourTarget={tourTarget} />
         <span className="text-xs text-faint">{m.mode === "AUTO" ? "Replies by itself" : m.mode === "DRAFT" ? "You approve replies" : "AI is off"}</span>
       </div>
       <div className="mt-4 grid grid-cols-3 gap-2 border-t border-line pt-3 text-center">
@@ -216,7 +159,7 @@ function AiEngineLine({ ai }: { ai: any }) {
       ? { dot: "bg-ok", text: `Replies are written by your connected AI model (${ai.model}).`, cta: "AI settings", href: "/settings/ai#connection" }
       : ai.kind === "needs_test"
         ? { dot: "bg-warn", text: "Your AI connection changed and needs a quick test before it writes replies.", cta: "Run test", href: "/settings/ai#connection" }
-        : { dot: "bg-faint", text: "Replies are written by built-in sample rules. Connect an AI model for natural, personal replies.", cta: "Connect AI", href: "/setup?step=ai" };
+        : { dot: "bg-faint", text: "Replies are written by built-in sample rules. Connect an AI model for natural, personal replies.", cta: "Connect AI", href: "/settings/ai#connection" };
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel/60 px-4 py-2.5 text-[13px]">
       <Sparkles className="size-4 text-accent" aria-hidden />

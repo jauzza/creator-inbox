@@ -114,7 +114,7 @@ function Step({ n, done, title, text, children, last }: { n: number; done: boole
   return (
     <div className="relative flex gap-4">
       <div className="flex flex-col items-center">
-        <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold", done ? "bg-ok/15 text-ok" : "bg-panel-3 text-muted ring-1 ring-inset ring-line-strong")}>
+        <span className={cn("flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold", done ? "bg-panel-3 text-fg" : "bg-panel-3 text-muted ring-1 ring-inset ring-line-strong")}>
           {done ? <CheckCircle2 className="size-4" aria-label="Done" /> : n}
         </span>
         {!last && <span className="my-1 w-px flex-1 bg-line" aria-hidden />}
@@ -136,7 +136,7 @@ export function AccountList({ d, reload }: { d: any; reload: () => void }) {
   return (
     <ul className="space-y-2">
       {d.accounts.map((a: any) => {
-        const st = a.isSimulated ? { label: "Demo", tone: "neutral" as const, help: "Built-in simulator with pretend customers. Nothing here reaches a real person." } : STATUS[a.connectionStatus] ?? STATUS.ERROR;
+        const st = a.isSimulated ? { label: "Practice", tone: "neutral" as const, help: "Built-in simulator with pretend customers. Nothing here reaches a real person." } : STATUS[a.connectionStatus] ?? STATUS.ERROR;
         return (
           <li key={a.id} className="rounded-xl border border-line bg-panel p-4">
             <div className="flex flex-wrap items-center gap-3">

@@ -1,3 +1,4 @@
+import { DEFAULT_STYLE } from "../ai/style";
 import { randomBytes } from "node:crypto";
 import { db, Prisma } from "../db";
 import { resolveReplyProvider, getAiSettings, buildProvider, estimateCostMicros, todayKey, spentTodayMicros } from "../ai/config";
@@ -50,13 +51,23 @@ export function autoCheck(expected: EvalExpected, out: { action: string; reply: 
 }
 
 /** Runs every case once for a run. Deterministic triage runs first, exactly like production. */
+const EVAL_CATALOG = [
+  { id: "eval_c1", title: "Autumn Hike", description: "24 photos from a mountain trail trip in October", priceCents: 1200, priceConfirmed: true },
+  { id: "eval_c2", title: "Film Diaries vol. 2", description: "30 film-camera photos from city walks", priceCents: 900, priceConfirmed: true },
+  { id: "eval_c3", title: "Kitchen Sessions", description: "12 recipe photos with handwritten notes", priceCents: null, priceConfirmed: false },
+];
+
 export async function executeEvalRun(runId: string) {
   const run = await db().evalRun.findUniqueOrThrow({ where: { id: runId } });
   const auto = await getAutomation();
   const { provider, settings } = await providerFor(run);
-  const acct = await db().creatorAccount.findFirst({ where: { isSimulated: true } });
-  const { style, version } = acct ? await activeStyle(db(), acct.id) : await activeStyle(db(), "none");
-  const catalogRows = acct ? await db().catalogItem.findMany({ where: { accountId: acct.id, active: true } }) : [];
+  // The eval set lives in its own synthetic world (facts + catalog below), independent of real accounts.
+  // A practice account's active style is used for voice when one exists, so style changes can be compared.
+  const acct = await db().creatorAccount.findFirst({ where: { isSimulated: true }, orderBy: { createdAt: "asc" } });
+  const voice = acct ? await activeStyle(db(), acct.id) : { style: DEFAULT_STYLE, version: null };
+  const style = { ...voice.style, publicFacts: DEFAULT_STYLE.publicFacts };
+  const version = voice.version;
+  const catalogRows = EVAL_CATALOG;
   const cases = await db().evalCase.findMany({ orderBy: { key: "asc" } });
   const blind = randomBytes(2).toString("hex").toUpperCase();
   await db().evalRun.update({ where: { id: runId }, data: { styleVersion: version } });

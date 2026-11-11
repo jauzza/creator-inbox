@@ -124,6 +124,10 @@ model User {
   passwordHash String
   role         Role     @default(OPERATOR)
   disabled     Boolean  @default(false)
+  /// First-run setup finished (owner: accounts, AI, personalities, timing). Until then the app shows setup.
+  onboardedAt     DateTime?
+  /// Mandatory guided tour finished.
+  tourCompletedAt DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

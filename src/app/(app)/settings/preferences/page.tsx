@@ -47,11 +47,8 @@ export default function PreferencesPage() {
           <SettingRow title="Reduce motion" description="Turns off animations and transitions. Your device's own setting is always respected too.">
             <Switch label="Reduce motion" checked={reduced} onChange={(v) => { setReduced(v); localStorage.setItem("ci.motion", v ? "reduced" : ""); document.documentElement.dataset.motion = v ? "reduced" : ""; }} />
           </SettingRow>
-          <SettingRow title="Hide demo conversations" description="Keep demo customers out of your inbox once you're using a real account. The guided tour still shows its test customer.">
-            <Switch label="Hide demo conversations" checked={hideDemo} onChange={(v) => { setHideDemo(v); localStorage.setItem("ci.hideDemo", v ? "1" : ""); }} />
-          </SettingRow>
-          <SettingRow title="Welcome screen" description="Show the “Explore with a demo / Set up my account” screen on Home again.">
-            <Button size="sm" onClick={() => { localStorage.removeItem("ci.welcome.done"); toast("The welcome screen will show next time you open Home", "info"); }}>Show again</Button>
+          <SettingRow title="Hide practice conversations" description="Keep chats from the practice sandbox out of your inbox.">
+            <Switch label="Hide practice conversations" checked={hideDemo} onChange={(v) => { setHideDemo(v); localStorage.setItem("ci.hideDemo", v ? "1" : ""); }} />
           </SettingRow>
           <SettingRow title="Theme" description="Creator Inbox uses a dark theme designed for long sessions.">
             <span className="text-[13px] text-muted">Dark</span>

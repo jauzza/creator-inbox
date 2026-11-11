@@ -73,7 +73,7 @@ export function PpvMenu({ accountId }: { accountId: string }) {
                 </p>
                 <p className="text-[12.5px] text-muted">{i.description}</p>
               </div>
-              <span className="shrink-0 text-[14px] font-semibold tabular-nums">{i.priceConfirmed ? money(i.priceCents) : <span className="text-xs font-normal text-warn">No price yet</span>}</span>
+              <span className="shrink-0 text-[14px] font-semibold tabular-nums">{i.priceConfirmed ? money(i.priceCents) : <span className="text-xs font-normal text-faint">No price yet</span>}</span>
               {owner && (
                 <span className="flex shrink-0 gap-0.5 opacity-60 group-hover:opacity-100">
                   <Button size="icon-sm" variant="ghost" aria-label={`Edit ${i.title}`} onClick={() => startEdit(i)}>

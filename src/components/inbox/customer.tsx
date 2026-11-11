@@ -87,7 +87,7 @@ export function CustomerPanel({ c, reload, onClose }: { c: any; reload: () => vo
             <InfoTip>Only purchases confirmed by a transaction record count here.</InfoTip>
           </p>
           <p className="mt-1 text-[15px] font-semibold tabular-nums">{money(cu.verifiedSpendCents)}</p>
-          <p className="text-[11px] text-muted">{c.account.isSimulated ? "Demo purchases" : "Verified"}</p>
+          <p className="text-[11px] text-muted">{c.account.isSimulated ? "Practice purchases" : "Verified"}</p>
         </div>
       </div>
 

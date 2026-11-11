@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowUp, Check, ChevronDown, Hand, MoreHorizontal, Pause, PanelRight, Play, RefreshCw, Sparkles, Undo2, UserRound } from "lucide-react";
-import { Avatar, Badge, Button, cn, Dialog, InfoTip, MODE_EXPLAIN, Notice, SimBadge, TechDetails, useAction, type Mode } from "../ui";
+import { Avatar, Badge, Button, cn, Dialog, InfoTip, Menu, MODE_EXPLAIN, Notice, SimBadge, TechDetails, useAction, type Mode } from "../ui";
 import { ago, money, post } from "@/lib/client";
 import { useTour } from "../tour/tour";
 import { useShell } from "../shell";
@@ -59,7 +59,6 @@ export function ConversationView({ c, reload, onBack, onDetails, detailsOpen }: 
   const tour = useTour();
   const scroller = useRef<HTMLDivElement>(null);
   const [confirmAuto, setConfirmAuto] = useState(false);
-  const [menu, setMenu] = useState(false);
   useLayoutEffect(() => {
     const el = scroller.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
@@ -97,7 +96,7 @@ export function ConversationView({ c, reload, onBack, onDetails, detailsOpen }: 
           <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em]">
             <span className="truncate">{c.customer.name}</span>
             {c.account.isSimulated && <SimBadge />}
-            <span className="hidden truncate text-xs font-normal text-faint sm:inline">· {c.account.name.replace(" (Demo)", "")}</span>
+            <span className="hidden truncate text-xs font-normal text-faint sm:inline">· {c.account.name.replace(/ \((Demo|Practice)\)$/, "")}</span>
           </h2>
           <p className="flex items-center gap-1.5 text-[12.5px] text-muted">
             <span className={cn("size-1.5 rounded-full", { accent: "bg-accent", ok: "bg-ok", warn: "bg-warn", danger: "bg-danger", neutral: "bg-faint" }[st.tone])} aria-hidden />
@@ -111,18 +110,18 @@ export function ConversationView({ c, reload, onBack, onDetails, detailsOpen }: 
         </div>
         <div className="flex items-center gap-1.5">
           {!c.takeover && (
-            <Button data-tour="ai-toggle" size="sm" variant={paused ? "primary" : "secondary"} loading={busy === "pause"} onClick={() => (paused ? act("pause", { action: "mode", mode: null }, "AI is back on for this chat", "ai-resumed") : act("pause", { action: "mode", mode: "PAUSED" }, "AI paused for this chat. Nothing will be drafted or sent automatically.", "ai-paused"))}>
+            <Button data-tour="ai-toggle" aria-label={paused ? "Resume AI" : "Pause AI"} size="sm" variant={paused ? "primary" : "secondary"} loading={busy === "pause"} onClick={() => (paused ? act("pause", { action: "mode", mode: null }, "AI is back on for this chat", "ai-resumed") : act("pause", { action: "mode", mode: "PAUSED" }, "AI paused for this chat. Nothing will be drafted or sent automatically.", "ai-paused"))}>
               {paused ? <Play className="size-3.5" /> : <Pause className="size-3.5" />}
               <span className="hidden sm:inline">{paused ? "Resume AI" : "Pause AI"}</span>
             </Button>
           )}
           {c.takeover ? (
-            <Button data-tour="takeover" size="sm" variant="primary" loading={busy === "takeover"} onClick={() => act("takeover", { action: "resume" }, "Handed back to the AI", "handed-back")}>
+            <Button data-tour="takeover" aria-label="Hand back to AI" size="sm" variant="primary" loading={busy === "takeover"} onClick={() => act("takeover", { action: "resume" }, "Handed back to the AI", "handed-back")}>
               <Undo2 className="size-3.5" />
               <span className="hidden sm:inline">Hand back to AI</span>
             </Button>
           ) : (
-            <Button data-tour="takeover" size="sm" variant="secondary" loading={busy === "takeover"} onClick={() => act("takeover", { action: "takeover" }, "You're handling this chat. Waiting AI drafts were cancelled.", "took-over")}>
+            <Button data-tour="takeover" aria-label="Take over" size="sm" variant="secondary" loading={busy === "takeover"} onClick={() => act("takeover", { action: "takeover" }, "You're handling this chat. Waiting AI drafts were cancelled.", "took-over")}>
               <Hand className="size-3.5" />
               <span className="hidden sm:inline">Take over</span>
             </Button>
@@ -130,44 +129,35 @@ export function ConversationView({ c, reload, onBack, onDetails, detailsOpen }: 
           <Button size="icon" variant={detailsOpen ? "secondary" : "ghost"} onClick={onDetails} aria-label="Customer details" aria-pressed={detailsOpen} title="Customer details">
             <PanelRight className="size-4" />
           </Button>
-          <div className="relative">
-            <Button size="icon" variant="ghost" aria-label="More options" aria-expanded={menu} onClick={() => setMenu((m) => !m)}>
-              <MoreHorizontal className="size-4" />
-            </Button>
-            {menu && (
-              <div className="absolute right-0 top-10 z-30 w-72 animate-pop rounded-xl border border-line-strong bg-panel-2 p-1.5 shadow-2xl" onMouseLeave={() => setMenu(false)}>
-                <p className="px-2.5 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-faint">AI for this chat</p>
-                {[
-                  { v: null, l: "Follow my main setting", h: "Uses the setting from Settings → Automation" },
-                  { v: "DRAFT", l: "Drafts only", h: MODE_EXPLAIN.DRAFT },
-                  { v: "AUTO", l: "Auto-reply allowed", h: "Only if your main setting also allows it" },
-                  { v: "MANUAL", l: "Manual", h: MODE_EXPLAIN.MANUAL },
-                  { v: "PAUSED", l: "Paused", h: MODE_EXPLAIN.PAUSED },
-                ].map((o) => (
-                  <button
-                    key={String(o.v)}
-                    type="button"
-                    className="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-panel-3"
-                    onClick={() => {
-                      setMenu(false);
-                      if (o.v === "AUTO") setConfirmAuto(true);
-                      else act("mode", { action: "mode", mode: o.v }, "Setting updated for this chat");
-                    }}
-                  >
-                    <Check className={cn("mt-0.5 size-3.5 shrink-0", (c.policy.override ?? null) === o.v ? "text-accent" : "text-transparent")} />
-                    <span>
-                      <span className="block text-[13px]">{o.l}</span>
-                      <span className="block text-[11.5px] leading-snug text-faint">{o.h}</span>
-                    </span>
-                  </button>
-                ))}
-                <div className="my-1 border-t border-line" />
-                <button type="button" disabled={!c.policy.aiMayDraft} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] hover:bg-panel-3 disabled:opacity-40" onClick={() => { setMenu(false); act("regen", { action: "regenerate" }, "Asking the AI for a new draft…"); }}>
-                  <RefreshCw className="size-3.5 text-faint" /> Ask AI for a new draft
-                </button>
-              </div>
-            )}
-          </div>
+          <Menu.Root>
+            <Menu.Trigger asChild>
+              <Button size="icon" variant="ghost" aria-label="More options">
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </Menu.Trigger>
+            <Menu.Content className="w-72">
+              <Menu.Label>AI for this chat</Menu.Label>
+              {[
+                { v: null, l: "Follow the model's setting", h: "Uses this model's Off / Drafts / Auto switch" },
+                { v: "DRAFT", l: "Drafts only", h: MODE_EXPLAIN.DRAFT },
+                { v: "AUTO", l: "Auto-reply allowed", h: "Only if the model's switch also allows it" },
+                { v: "MANUAL", l: "Manual", h: MODE_EXPLAIN.MANUAL },
+                { v: "PAUSED", l: "Paused", h: MODE_EXPLAIN.PAUSED },
+              ].map((o) => (
+                <Menu.Item key={String(o.v)} onSelect={() => (o.v === "AUTO" ? setConfirmAuto(true) : act("mode", { action: "mode", mode: o.v }, "Setting updated for this chat"))}>
+                  <Check className={cn("mt-0.5 size-3.5 shrink-0", (c.policy.override ?? null) === o.v ? "text-fg" : "text-transparent")} />
+                  <span>
+                    <span className="block text-[13px]">{o.l}</span>
+                    <span className="block text-[11.5px] leading-snug text-faint">{o.h}</span>
+                  </span>
+                </Menu.Item>
+              ))}
+              <Menu.Separator />
+              <Menu.Item disabled={!c.policy.aiMayDraft} onSelect={() => act("regen", { action: "regenerate" }, "Asking the AI for a new draft…")} className="items-center">
+                <RefreshCw className="size-3.5 text-faint" /> Ask AI for a new draft
+              </Menu.Item>
+            </Menu.Content>
+          </Menu.Root>
         </div>
       </header>
 
@@ -200,7 +190,7 @@ export function ConversationView({ c, reload, onBack, onDetails, detailsOpen }: 
                     <p className={cn("mt-1 px-1 text-[11px] text-faint", out && "text-right")}>
                       {d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       {out && ORIGIN_LABEL[m.origin] && ` · ${ORIGIN_LABEL[m.origin]}`}
-                      {out && c.account.isSimulated && " · Demo"}
+                      {out && c.account.isSimulated && " · Practice"}
                     </p>
                   </div>
                 </div>
@@ -361,7 +351,7 @@ function DraftCard({ d, c, reload, openDetails }: { d: any; c: any; reload: () =
     );
 
   return (
-    <div data-tour="draft-card" className="mb-2 animate-rise overflow-hidden rounded-2xl border border-accent/30 bg-panel shadow-[0_8px_40px_-20px_var(--color-accent)]">
+    <div data-tour="draft-card" className="mb-2 animate-rise overflow-hidden rounded-2xl border border-accent/30 bg-panel">
       <div className="flex flex-wrap items-center gap-2 border-b border-line/70 bg-accent/5 px-4 py-2.5">
         <Sparkles className="size-4 text-accent" aria-hidden />
         <span className="text-[13px] font-medium">{d.status === "HANDOFF" ? "The AI passed this one to you" : "Suggested reply"}</span>
@@ -373,7 +363,7 @@ function DraftCard({ d, c, reload, openDetails }: { d: any; c: any; reload: () =
       </div>
       <div className="space-y-3 px-4 py-3">
         {d.status === "QUEUED" && (
-          <div data-tour="auto-wait" className="flex flex-wrap items-center gap-2 rounded-xl bg-ok/8 px-3.5 py-2.5 text-[12.5px] text-muted">
+          <div data-tour="auto-wait" className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel-2/60 px-3.5 py-2.5 text-[12.5px] text-muted">
             <span className="flex-1">
               {new Date(d.scheduledFor).getTime() - Date.now() > 10 * 60000
                 ? `It's outside the reply hours set in Automation & timing, so it waits until ${new Date(d.scheduledFor).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`
@@ -382,7 +372,7 @@ function DraftCard({ d, c, reload, openDetails }: { d: any; c: any; reload: () =
             </span>
             {c.account.isSimulated && new Date(d.scheduledFor).getTime() - Date.now() <= 10 * 60000 && (
               <Button size="xs" variant="secondary" loading={busy === "ff"} onClick={() => run("ff", () => post("/api/simulator", { action: "fast_forward" }).then(reload), "Skipping the wait (demo only)")}>
-                Skip the wait (demo)
+                Skip the wait (practice)
               </Button>
             )}
           </div>
@@ -411,7 +401,7 @@ function DraftCard({ d, c, reload, openDetails }: { d: any; c: any; reload: () =
               }
             }}
             rows={2}
-            className="w-full resize-none rounded-xl border border-line bg-bg/50 px-3.5 py-2.5 text-[14px] leading-relaxed text-fg transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-70"
+            className="w-full resize-none rounded-xl border border-line bg-bg/50 px-3.5 py-2.5 text-[14px] max-sm:text-[16px] leading-relaxed text-fg transition-colors focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-70"
           />
         )}
         {issues.length > 0 && (
@@ -537,7 +527,7 @@ function Composer({ c, reload }: { c: any; reload: () => void }) {
                 submit();
               }
             }}
-            className="max-h-44 min-h-8 flex-1 resize-none bg-transparent py-1.5 text-[14px] leading-relaxed text-fg placeholder:text-faint focus:outline-none disabled:cursor-not-allowed"
+            className="max-h-44 min-h-8 flex-1 resize-none bg-transparent py-1.5 text-[14px] max-sm:text-[16px] leading-relaxed text-fg placeholder:text-faint focus:outline-none disabled:cursor-not-allowed"
           />
         </div>
         <Button type="submit" variant="primary" size="icon" className="mb-0.5 size-10 rounded-full" loading={busy === "send"} disabled={!text.trim() || blocked} aria-label="Send message">
@@ -545,7 +535,7 @@ function Composer({ c, reload }: { c: any; reload: () => void }) {
         </Button>
       </form>
       <p className="mx-auto mt-1.5 max-w-2xl px-1 text-[11px] text-faint">
-        {c.account.isSimulated ? "Demo conversation: replies go to the built-in simulator, never to a real person." : "Enter to send · Shift+Enter for a new line"}
+        {c.account.isSimulated ? "Practice conversation: replies go to the built-in simulator, never to a real person." : "Enter to send · Shift+Enter for a new line"}
       </p>
     </div>
   );
@@ -559,10 +549,10 @@ function HandoffBanner({ c, reload }: { c: any; reload: () => void }) {
   if (!h) return null;
   const call = (body: object, ok: string) => run("h", () => post(`/api/handoffs/${h.id}`, body).then(reload), ok);
   return (
-    <div className="border-b border-warn/20 bg-warn/6 px-4 py-2.5 sm:px-5">
+    <div className="border-b border-line bg-panel px-4 py-2.5 sm:px-5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <p className="min-w-0 flex-1 text-[13px]">
-          <span className="font-medium text-warn">Needs you: </span>
+          <span className="mr-1.5 inline-block size-1.5 rounded-full bg-warn align-middle" aria-hidden /><span className="font-medium">Needs you: </span>
           <span className="text-fg/90">{h.reason}</span>
           {h.evidence && <span className="text-muted"> · “{h.evidence}”</span>}
         </p>

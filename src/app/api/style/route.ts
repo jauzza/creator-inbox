@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { api } from "@/server/http";
 import { db } from "@/server/db";
-import { styleSchema, DEFAULT_STYLE } from "@/server/ai/style";
+import { styleSchema, DEFAULT_STYLE, starterStyle } from "@/server/ai/style";
 import { requireOwner, assertAccountAccess, HttpError } from "@/server/auth/access";
 import { audit } from "@/server/audit";
 import { resolveReplyProvider, estimateCostMicros, spentTodayMicros, todayKey } from "@/server/ai/config";
@@ -26,7 +26,7 @@ export const GET = api({ auth: "user" }, async ({ user, req }) => {
   const exp = await db().integrationConfig.findUnique({ where: { id: "experiment" } });
   return {
     account: { id: acct.id, name: acct.displayName, disclosureText: acct.disclosureText },
-    active: active ? { version: active.version, data: parsed?.success ? parsed.data : DEFAULT_STYLE } : { version: null, data: DEFAULT_STYLE },
+    active: active ? { version: active.version, data: parsed?.success ? parsed.data : DEFAULT_STYLE } : { version: null, data: acct.isSimulated ? DEFAULT_STYLE : starterStyle(acct.displayName) },
     versions: versions.map((v) => ({ version: v.version, active: v.active, changeNote: v.changeNote, createdAt: v.createdAt })),
     experiment: exp ? { enabled: exp.enabled, ...(exp.settings as object) } : null,
     promptVersion: PROMPT_VERSION,

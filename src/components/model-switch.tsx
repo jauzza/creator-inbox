@@ -49,9 +49,9 @@ export function ModelSwitch({ accountId, name, mode, isSimulated, onChange, size
               size === "sm" ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-[13px]",
               current === o.v
                 ? o.v === "AUTO"
-                  ? "bg-ok/15 text-ok ring-1 ring-inset ring-ok/30"
+                  ? "bg-fg text-bg shadow-sm"
                   : o.v === "DRAFT"
-                    ? "bg-accent/15 text-accent-strong ring-1 ring-inset ring-accent/30"
+                    ? "bg-panel-3 text-fg shadow-sm ring-1 ring-inset ring-line-strong"
                     : "bg-panel-3 text-fg ring-1 ring-inset ring-line-strong"
                 : "text-muted hover:text-fg",
             )}
@@ -82,7 +82,7 @@ export function ModelSwitch({ accountId, name, mode, isSimulated, onChange, size
           <li>• Every AI-written message carries {name}'s AI disclosure. Other models keep their current setting.</li>
         </ul>
         {isSimulated ? (
-          <p className="text-[13px] text-muted">This is a demo model: replies only go to the built-in simulator.</p>
+          <p className="text-[13px] text-muted">This is a practice account: replies only go to the built-in simulator.</p>
         ) : (
           <p className="text-[13px] text-muted">Make sure this account is allowed to use automated replies under the platform's and provider's terms.</p>
         )}

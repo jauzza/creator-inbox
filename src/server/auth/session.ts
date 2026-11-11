@@ -7,7 +7,7 @@ import type { Role } from "@/generated/prisma/client";
 export const SESSION_COOKIE = "ci_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 
-export type SessionUser = { id: string; email: string; name: string; role: Role; csrfToken: string; sessionId: string };
+export type SessionUser = { id: string; email: string; name: string; role: Role; csrfToken: string; sessionId: string; onboardedAt?: Date | null; tourCompletedAt?: Date | null };
 
 export async function createSession(userId: string, userAgent?: string) {
   const token = randomBytes(32).toString("base64url");
@@ -25,7 +25,7 @@ export async function getSessionUser(token: string | undefined): Promise<Session
   if (Date.now() - s.lastSeenAt.getTime() > 60_000) {
     await db().session.update({ where: { id: s.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
   }
-  return { id: s.user.id, email: s.user.email, name: s.user.name, role: s.user.role, csrfToken: s.csrfToken, sessionId: s.id };
+  return { id: s.user.id, email: s.user.email, name: s.user.name, role: s.user.role, csrfToken: s.csrfToken, sessionId: s.id, onboardedAt: s.user.onboardedAt, tourCompletedAt: s.user.tourCompletedAt };
 }
 
 export async function destroySession(token: string) {

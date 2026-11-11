@@ -37,7 +37,14 @@ The stack is single-workspace, with no microservices and no Kubernetes. There ar
   - Advanced holds the Activity log, Demo lab (the simulator), Team, Data & backups, and Troubleshooting.
   - The full report is at `/insights`.
 - **Setup wizard:** `/setup`.
-- **Design system:** `src/components/ui.tsx` (tokens in `globals.css`).
+- **Design system:** `src/components/ui.tsx`.
+  - shadcn/ui-style components on Radix primitives (Dialog, DropdownMenu, Popover, Switch, Slider, ToggleGroup, Tabs, Collapsible), plus sonner toasts and Geist.
+  - Tokens are in `globals.css`: a neutral zinc scale with white as the primary colour.
+- **First run:**
+  - `User.onboardedAt` and `User.tourCompletedAt` record progress.
+  - The shell redirects to `/onboarding` until setup is complete.
+  - `POST /api/onboarding complete` enforces the minimums server-side: a connected real account, and a tested AI or explicit acceptance of sample replies.
+  - The tour then auto-starts until `tour_done` is recorded.
   - `humanize()` in `src/lib/client.ts` turns technical errors into plain sentences. Every error UI keeps the original under "Technical details".
 - **Guided tour:** `src/components/tour/`.
   - `tour.tsx` is the engine.

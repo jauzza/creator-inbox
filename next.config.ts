@@ -29,6 +29,7 @@ const config: NextConfig = {
       { source: "/activity", destination: "/settings/advanced", permanent: false },
       { source: "/help", destination: "/settings/preferences", permanent: false },
       { source: "/customers", destination: "/inbox", permanent: false },
+      { source: "/setup", destination: "/settings/accounts", permanent: false },
     ];
   },
   async headers() {

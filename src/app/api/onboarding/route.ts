@@ -1,28 +1,16 @@
+import { z } from "zod";
 import { api } from "@/server/http";
-import { db } from "@/server/db";
-import { secretStatus } from "@/server/crypto/secrets";
+import { completeOnboarding, finishTour, onboardingStatus } from "@/server/services/onboarding";
 
-/** Walkthrough progress is derived from real actions (audit log + data), not self-reported ticks. */
-export const GET = api({ auth: "user" }, async () => {
-  const has = async (prefix: string) => (await db().auditLog.count({ where: { action: { startsWith: prefix } } })) > 0;
-  const ai = await db().integrationConfig.findUnique({ where: { id: "ai" } });
-  const aiSettings = (ai?.settings ?? {}) as any;
-  return {
-    steps: {
-      launch: true,
-      login: true,
-      simulator: await has("simulator."),
-      provider: (await secretStatus("messaging.onlyfansapi_com")).set,
-      ai: !!ai?.lastTestOk || aiSettings.provider === "offline" || !ai,
-      aiLive: !!ai?.lastTestOk,
-      style: (await db().aiUsage.count({ where: { purpose: "preview" } })) > 0,
-      timing: await has("automation.rules"),
-      approve: await has("draft.approved"),
-      pause: await has("conversation.mode"),
-      stop: await has("automation.emergency_stop.on"),
-      scoring: (await db().intentSignal.count()) > 0,
-      notify: (await db().notification.count({ where: { kind: "test" } })) > 0,
-      takeover: (await has("conversation.takeover")) && (await has("conversation.resume")),
-    },
-  };
+export const GET = api({ auth: "user" }, async ({ user }) => onboardingStatus(user.id));
+
+const body = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("complete"), acceptSampleReplies: z.boolean().optional() }),
+  z.object({ action: z.literal("tour_done") }),
+]);
+
+export const POST = api({ auth: "user", body }, async ({ user, body }) => {
+  if (body.action === "tour_done") await finishTour(user.id);
+  else await completeOnboarding(user, body.acceptSampleReplies);
+  return { ok: true };
 });

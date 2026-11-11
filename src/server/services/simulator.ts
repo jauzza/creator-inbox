@@ -113,6 +113,17 @@ export async function setAiFailNext(userId: string, n: number) {
   await audit("simulator.ai_fail_next", { actorId: userId, details: { n } });
 }
 
+/** Remove every practice (simulated) account and everything attached to it. Real accounts are untouched. */
+export async function removePracticeData(userId: string) {
+  const accts = await db().creatorAccount.findMany({ where: { isSimulated: true }, select: { id: true } });
+  await db().creatorAccount.deleteMany({ where: { isSimulated: true } });
+  await db().simulatorSent.deleteMany({});
+  await db().webhookEvent.deleteMany({ where: { provider: "simulator" } });
+  await db().funnelEvent.deleteMany({ where: { isSimulated: true } });
+  await audit("practice.removed", { actorId: userId, details: { accounts: accts.length } });
+  return { removed: accts.length };
+}
+
 /** Simulator-only: make pending jobs for simulated conversations due now, so you don't wait for pacing delays. */
 export async function fastForward(userId: string) {
   const r = await db().job.updateMany({

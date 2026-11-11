@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { Badge, Button, Card, ErrorBox, Field, Input, Loading, Notice, Select, useAction } from "@/components/ui";
+import { Badge, Button, Card, Empty, ErrorBox, Field, Input, Loading, Notice, Select, useAction } from "@/components/ui";
 import { ago, post, useApi } from "@/lib/client";
 
 const SCENARIO_HELP: Record<string, string> = {
@@ -33,9 +33,27 @@ export function DemoLab() {
   if (error && !data) return <ErrorBox error={error} retry={reload} />;
   const call = (key: string, body: object, ok: string) => run(key, async () => { const r = await post("/api/simulator", body); setLast(r); reload(); return r; }, ok);
   const target = chat || undefined;
+  if (!data.account)
+    return (
+      <Empty
+        title="No practice account"
+        action={
+          <Button variant="primary" loading={busy === "create"} onClick={() => run("create", () => post("/api/simulator", { action: "create_practice" }).then(() => reload()), "Practice account created. Its chats are marked Practice.")}>
+            Create a practice account
+          </Button>
+        }
+      >
+        A practice account lets you try tricky situations (refund requests, failed sends, duplicate messages) without touching a real subscriber. It uses a built-in simulator with no internet access, and its chats are clearly marked. Remove it any time.
+      </Empty>
+    );
   return (
     <div className="space-y-4">
-      <Notice title="Pretend customers, real app">Send test messages and try tricky situations (failed sends, duplicate messages, a customer asking for a refund) without touching a real account. Everything here is labelled <Badge tone="info">Demo</Badge> and can never reach a real customer: demo accounts are wired to a built-in simulator with no internet access.</Notice>
+      <div className="flex justify-end">
+        <Button size="sm" variant="danger" loading={busy === "remove"} onClick={() => confirm("Remove the practice accounts and all their chats? Real accounts are not affected.") && run("remove", () => post("/api/simulator", { action: "remove_practice" }).then(() => reload()), "Practice data removed")}>
+          Remove practice data
+        </Button>
+      </div>
+      <Notice title="Pretend customers, real app">Send test messages and try tricky situations (failed sends, duplicate messages, a customer asking for a refund) without touching a real account. Everything here is labelled <Badge>Practice</Badge> and can never reach a real customer: practice accounts are wired to a built-in simulator with no internet access.</Notice>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Incoming messages" description="Send to an existing simulated chat, or leave blank to create a new fan.">
           <Field label="Target chat">{(id) => <Select id={id} value={chat} onChange={(e) => setChat(e.target.value)} options={[{ value: "", label: "New simulated fan" }, ...data.chats.map((c: any) => ({ value: c.chatId, label: c.name }))]} />}</Field>

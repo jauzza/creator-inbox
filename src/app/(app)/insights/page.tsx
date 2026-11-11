@@ -24,7 +24,7 @@ export default function AnalyticsPage() {
         actions={
           <div className="flex items-center gap-3">
             <Select aria-label="Window" className="h-8 w-32" value={days} onChange={(e) => setDays(e.target.value)} options={[{ value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }]} />
-            <label className="flex items-center gap-2 text-xs text-muted">Include demo data <Switch label="Include simulator data" checked={sim} onChange={setSim} /></label>
+            <label className="flex items-center gap-2 text-xs text-muted">Include practice data <Switch label="Include simulator data" checked={sim} onChange={setSim} /></label>
           </div>
         }
       />

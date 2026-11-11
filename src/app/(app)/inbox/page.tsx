@@ -54,8 +54,7 @@ function Inbox() {
   const listUrl = useMemo(() => `/api/conversations?filter=${filter}&q=${encodeURIComponent(qDebounced)}${model ? `&account=${model}` : ""}`, [filter, qDebounced, model]);
   const list = useApi<any[]>(listUrl, { poll: tour.active ? 1200 : 4000 });
   const detail = useApi<any>(selected ? `/api/conversations/${selected}` : null, { poll: tour.active ? 1200 : 3000 });
-  // During the tour the demo is always visible, even if demo chats are hidden in Preferences.
-  const rows = (list.data ?? []).filter((c) => !hideDemo || !c.account.isSimulated || c.isTour);
+  const rows = (list.data ?? []).filter((c) => !hideDemo || !c.account.isSimulated);
 
   const open = (id: string | null) => {
     const p = new URLSearchParams(sp.toString());
@@ -64,7 +63,7 @@ function Inbox() {
     p.delete("filter");
     setDetails(false);
     router.push(`/inbox?${p.toString()}`, { scroll: false });
-    if (id && rows.find((r) => r.id === id)?.isTour) tour.signal("open-convo");
+    if (id) tour.signal("open-convo");
   };
 
   return (
@@ -84,7 +83,7 @@ function Inbox() {
               {models.map((m) => (
                 <button key={m.id} type="button" role="tab" aria-selected={model === m.id} onClick={() => setModel(m.id)} className={cn("flex shrink-0 items-center gap-1.5 rounded-lg border py-1 pl-1 pr-2.5 text-[12.5px] font-medium transition-colors", model === m.id ? "border-accent/50 bg-accent/10 text-fg" : "border-line text-muted hover:text-fg")}>
                   <Avatar name={m.displayName} size={20} />
-                  {m.displayName.replace(" (Demo)", "")}
+                  {m.displayName.replace(/ \((Demo|Practice)\)$/, "")}
                   <span className={cn("size-1.5 rounded-full", m.mode === "AUTO" ? "bg-ok" : m.mode === "DRAFT" ? "bg-accent" : "bg-faint")} title={m.mode === "AUTO" ? "Auto-reply on" : m.mode === "DRAFT" ? "Drafts" : "AI off"} />
                 </button>
               ))}
@@ -137,8 +136,8 @@ function Inbox() {
             </div>
           )}
           <ul className="space-y-0.5">
-            {rows.map((c) => (
-              <li key={c.id}>
+            {rows.map((c, i) => (
+              <li key={c.id} data-tour={i === 0 ? "first-convo" : undefined}>
                 <ConversationRow c={c} selected={selected === c.id} onOpen={() => open(c.id)} showModel={!model && models.length > 1} />
               </li>
             ))}
@@ -190,17 +189,17 @@ function Inbox() {
 function ConversationRow({ c, selected, onOpen, showModel }: { c: any; selected: boolean; onOpen: () => void; showModel?: boolean }) {
   const unread = c.unread > 0;
   const status = c.handoff
-    ? { label: "Needs you", cls: "bg-warn/12 text-warn" }
+    ? { label: "Needs you", cls: "bg-warn" }
     : c.draft?.status === "UNCERTAIN"
-      ? { label: "Check delivery", cls: "bg-danger/12 text-danger" }
+      ? { label: "Check delivery", cls: "bg-danger" }
       : c.draft?.status === "QUEUED"
-        ? { label: `Sends ${ago(c.draft.scheduledFor)}`, cls: "bg-ok/12 text-ok" }
+        ? { label: `Sends ${ago(c.draft.scheduledFor)}`, cls: "bg-ok" }
         : c.draft?.status === "PROPOSED" && c.draft.nextAction !== "WAIT"
-          ? { label: "Draft ready", cls: "bg-accent/14 text-accent-strong" }
+          ? { label: "Draft ready", cls: "bg-fg" }
           : c.takenOver
-            ? { label: "You're handling", cls: "bg-panel-3 text-muted" }
+            ? { label: "You're handling", cls: "bg-faint" }
             : c.mode === "PAUSED"
-              ? { label: "AI paused", cls: "bg-panel-3 text-muted" }
+              ? { label: "AI paused", cls: "bg-faint" }
               : null;
   return (
     <button
@@ -212,19 +211,24 @@ function ConversationRow({ c, selected, onOpen, showModel }: { c: any; selected:
     >
       <div className="relative">
         <Avatar name={c.customer.name} size={40} />
-        {unread && <span className="absolute -right-0.5 -top-0.5 size-3 rounded-full bg-accent ring-[2.5px] ring-bg" aria-label="New message" />}
+        {unread && <span className="absolute -right-0.5 -top-0.5 size-3 rounded-full bg-fg ring-[2.5px] ring-bg" aria-label="New message" />}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className={cn("truncate text-[14px]", unread ? "font-semibold text-fg" : "font-medium text-fg/90")}>{c.customer.name}</span>
-          {showModel ? <span className="shrink-0 truncate text-[11px] text-faint">· {c.account.name.replace(" (Demo)", "")}</span> : c.account.isSimulated && <SimBadge />}
+          {showModel ? <span className="shrink-0 truncate text-[11px] text-faint">· {c.account.name.replace(/ \((Demo|Practice)\)$/, "")}</span> : c.account.isSimulated && <SimBadge />}
           <span className={cn("ml-auto shrink-0 text-[11.5px]", unread ? "text-accent" : "text-faint")}>{ago(c.lastMessage?.at).replace(" ago", "")}</span>
         </div>
         <p className={cn("mt-0.5 truncate text-[13px]", unread ? "text-fg/80" : "text-muted")}>
           {c.lastMessage?.direction === "OUTBOUND" && <span className="text-faint">You: </span>}
           {c.lastMessage?.body ?? "No messages yet"}
         </p>
-        {status && <span className={cn("mt-1.5 inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium", status.cls)}>{status.label}</span>}
+        {status && (
+          <span className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-line-strong px-1.5 py-0.5 text-[11px] font-medium text-muted">
+            <span className={cn("size-1.5 rounded-full", status.cls)} aria-hidden />
+            {status.label}
+          </span>
+        )}
       </div>
     </button>
   );

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { api } from "@/server/http";
 import { db } from "@/server/db";
-import { SIM_SCENARIOS, simulateScenario, simulateCustomText, simulateDuplicateWebhook, simulateOutOfOrder, simulateBadSignature, setNextSendFailure, setAiFailNext, fastForward, simulatePurchase } from "@/server/services/simulator";
+import { SIM_SCENARIOS, simulateScenario, simulateCustomText, simulateDuplicateWebhook, simulateOutOfOrder, simulateBadSignature, setNextSendFailure, setAiFailNext, fastForward, simulatePurchase, removePracticeData } from "@/server/services/simulator";
 import { seedSimulator } from "@/server/seed";
 import { requireOwner } from "@/server/auth/access";
 import { audit } from "@/server/audit";
@@ -25,6 +25,8 @@ const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("fast_forward") }),
   z.object({ action: z.literal("purchase"), customerId: z.string(), catalogItemId: z.string() }),
   z.object({ action: z.literal("reset") }),
+  z.object({ action: z.literal("create_practice") }),
+  z.object({ action: z.literal("remove_practice") }),
 ]);
 
 export const POST = api({ auth: "user", body }, async ({ user, body }) => {
@@ -50,6 +52,15 @@ export const POST = api({ auth: "user", body }, async ({ user, body }) => {
     case "purchase":
       await simulatePurchase(user.id, body.customerId, body.catalogItemId);
       return { ok: true };
+    case "create_practice": {
+      requireOwner(user);
+      const a = await seedSimulator();
+      await audit("practice.created", { actorId: user.id });
+      return { accountId: a.id };
+    }
+    case "remove_practice":
+      requireOwner(user);
+      return removePracticeData(user.id);
     case "reset": {
       requireOwner(user);
       await db().creatorAccount.deleteMany({ where: { isSimulated: true } });

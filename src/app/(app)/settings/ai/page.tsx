@@ -2,7 +2,8 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Check, MessageCircle, Plus, RefreshCw, RotateCcw, Sparkles, Trash2, Wand2, X } from "lucide-react";
-import { Advanced, Avatar, Badge, Button, Card, cn, ErrorBox, Field, InfoTip, Input, Segmented, SettingRow, Skeleton, Slider, Switch, TechDetails, Textarea, useAction, useToast } from "@/components/ui";
+import Link from "next/link";
+import { Advanced, Avatar, Badge, Button, buttonVariants, Card, cn, Empty, ErrorBox, Field, InfoTip, Input, Segmented, SettingRow, Skeleton, Slider, Switch, TechDetails, Textarea, useAction, useToast } from "@/components/ui";
 import { ago, humanize, post, useApi } from "@/lib/client";
 import { useTour } from "@/components/tour/tour";
 import { useShell } from "@/components/shell";
@@ -10,6 +11,7 @@ import { AiConnection } from "@/components/settings/ai-connection";
 import { Ai as AiTechnical } from "@/components/settings/integrations";
 import { Experiment, Workbench } from "@/components/settings/style-advanced";
 import { PpvMenu } from "@/components/settings/ppv-menu";
+import { ChipEditor, ListEditor, PRESETS } from "@/components/settings/personality-bits";
 
 type Style = {
   creatorName: string;
@@ -32,13 +34,6 @@ type Style = {
 
 const SAMPLE = "Hey! I'm new here. What kind of content do you offer?";
 
-const PRESETS: { id: Style["tone"]; name: string; blurb: string; emoji: string; set: Partial<Style> }[] = [
-  { id: "warm", name: "Friendly", blurb: "Warm, kind and easy-going", emoji: "😊", set: { tone: "warm", formality: 30, expressiveness: 60, emoji: "rare", replyLength: "short" } },
-  { id: "playful", name: "Playful", blurb: "Fun, bubbly, lots of energy", emoji: "✨", set: { tone: "playful", formality: 15, expressiveness: 85, emoji: "often", replyLength: "medium" } },
-  { id: "confident", name: "Confident", blurb: "Direct, cool and self-assured", emoji: "😎", set: { tone: "confident", formality: 50, expressiveness: 40, emoji: "rare", replyLength: "short" } },
-  { id: "professional", name: "Professional", blurb: "Polished, clear and courteous", emoji: "💼", set: { tone: "professional", formality: 85, expressiveness: 25, emoji: "none", replyLength: "medium", lowercase: false } },
-  { id: "concise", name: "Short & sweet", blurb: "Gets to the point, fast", emoji: "⚡", set: { tone: "concise", formality: 40, expressiveness: 30, emoji: "none", replyLength: "short" } },
-];
 const TONE_NAME = Object.fromEntries(PRESETS.map((p) => [p.id, p.name])) as Record<Style["tone"], string>;
 const LENGTH_NAME = { short: "Short", medium: "Balanced", long: "Detailed" };
 const EMOJI_NAME = { none: "None", rare: "Rarely", some: "Sometimes", often: "Often" };
@@ -80,6 +75,12 @@ function AiSettings() {
   const model = sp.get("model") ?? models[0]?.id ?? "";
   const style = useApi<any>(model ? `/api/style?account=${model}` : null);
   const integ = useApi<any>("/api/integrations");
+  if (auto && models.length === 0)
+    return (
+      <Empty icon={<Sparkles className="size-5" />} title="No models connected yet" action={<Link href="/settings/accounts" className={buttonVariants({ variant: "primary" })}>Connect an account</Link>}>
+        Each connected creator account gets her own AI personality and PPV menu here.
+      </Empty>
+    );
   if (style.error && !style.data) return <ErrorBox error={style.error} retry={style.reload} />;
   if (!style.data || !integ.data)
     return (
@@ -98,7 +99,7 @@ function AiSettings() {
           {models.map((m) => (
             <button key={m.id} type="button" role="tab" aria-selected={model === m.id} onClick={() => router.replace(`/settings/ai?model=${m.id}`, { scroll: false })} className={cn("flex items-center gap-2 rounded-xl border py-1.5 pl-1.5 pr-3.5 text-[13px] font-medium transition-colors", model === m.id ? "border-accent/50 bg-accent/10 text-fg" : "border-line text-muted hover:border-line-strong hover:text-fg")}>
               <Avatar name={m.displayName} size={26} />
-              {m.displayName.replace(" (Demo)", "")}
+              {m.displayName.replace(/ \((Demo|Practice)\)$/, "")}
             </button>
           ))}
         </div>
@@ -151,7 +152,7 @@ function Editor({ d, integ, reload }: { d: any; integ: any; reload: () => void }
   return (
     <div className="pb-24">
       <div className="mb-6">
-        <h2 className="text-[18px] font-semibold tracking-[-0.015em]">{d.account.name.replace(" (Demo)", "")}'s AI personality</h2>
+        <h2 className="text-[18px] font-semibold tracking-[-0.015em]">{d.account.name.replace(/ \((Demo|Practice)\)$/, "")}'s AI personality</h2>
         <p className="mt-1 max-w-2xl text-[14px] text-muted">How the AI sounds for this model, what it knows, and what it can offer. Try changes in the preview first; nothing changes for subscribers until you press Save.</p>
       </div>
 
@@ -232,7 +233,7 @@ function Editor({ d, integ, reload }: { d: any; integ: any; reload: () => void }
             </div>
           </Card>
 
-          <Card title="PPV menu" description="Paid videos and sets the AI may mention, with exact prices. It only brings them up when a subscriber is interested, never re-offers what they bought, and backs off after a no.">
+          <Card id="ppv" tour="ppv-menu" className="scroll-mt-6" title="PPV menu" description="Paid videos and sets the AI may mention, with exact prices. It only brings them up when a subscriber is interested, never re-offers what they bought, and backs off after a no.">
             <PpvMenu accountId={d.account.id} />
           </Card>
 
@@ -482,7 +483,7 @@ function ReplyBubble({ label, r, loading, muted, highlight, stale }: { label: st
           <div className="skeleton h-2.5 w-2/3 rounded-full" />
         </div>
       ) : body ? (
-        <div className={cn("max-w-[90%] animate-pop rounded-2xl rounded-br-md px-3.5 py-2 text-[13.5px] leading-relaxed", muted ? "bg-panel-3 text-fg/80" : "bg-accent text-accent-ink", highlight && "shadow-[0_8px_30px_-10px_var(--color-accent)]")}>
+        <div className={cn("max-w-[90%] animate-pop rounded-2xl rounded-br-md px-3.5 py-2 text-[13.5px] leading-relaxed", muted ? "bg-panel-3 text-fg/80" : "bg-accent text-accent-ink", highlight && "")}>
           {body}
           {disclosure && <span className={cn("mt-1.5 block text-[11px]", muted ? "text-faint" : "text-accent-ink/60")}>+ {disclosure}</span>}
         </div>
@@ -492,58 +493,6 @@ function ReplyBubble({ label, r, loading, muted, highlight, stale }: { label: st
           {r.explanation && <span className="mt-1 block text-[11px] text-faint">{r.explanation}</span>}
         </div>
       )}
-    </div>
-  );
-}
-
-function ListEditor({ label, items, onChange, placeholder, max }: { label: string; items: string[]; onChange: (v: string[]) => void; placeholder: string; max: number }) {
-  const [v, setV] = useState("");
-  const add = () => {
-    const t = v.trim();
-    if (!t || items.length >= max) return;
-    onChange([...items, t]);
-    setV("");
-  };
-  return (
-    <div>
-      <p className="mb-2 text-[13px] font-medium">{label}</p>
-      <ul className="space-y-1.5">
-        {items.map((it, i) => (
-          <li key={i} className="group flex items-center gap-2 rounded-lg border border-line bg-panel-2/40 pr-1 transition-colors focus-within:border-accent">
-            <input aria-label={`${label} ${i + 1}`} value={it} onChange={(e) => onChange(items.map((x, k) => (k === i ? e.target.value : x)))} onBlur={(e) => !e.target.value.trim() && onChange(items.filter((_, k) => k !== i))} className="min-w-0 flex-1 bg-transparent px-3 py-2 text-[13px] focus:outline-none" />
-            <button type="button" aria-label="Remove" onClick={() => onChange(items.filter((_, k) => k !== i))} className="rounded-md p-1.5 text-faint opacity-60 hover:bg-panel-3 hover:text-danger group-hover:opacity-100">
-              <Trash2 className="size-3.5" />
-            </button>
-          </li>
-        ))}
-      </ul>
-      <form className="mt-2 flex gap-2" onSubmit={(e) => { e.preventDefault(); add(); }}>
-        <Input aria-label={`Add to ${label}`} value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} />
-        <Button type="submit" size="md" disabled={!v.trim()}><Plus className="size-3.5" /> Add</Button>
-      </form>
-    </div>
-  );
-}
-
-function ChipEditor({ label, hint, items, onChange, placeholder, tone }: { label: string; hint: string; items: string[]; onChange: (v: string[]) => void; placeholder: string; tone?: "danger" }) {
-  const [v, setV] = useState("");
-  return (
-    <div>
-      <p className="text-[13px] font-medium">{label}</p>
-      <p className="mb-2.5 text-xs text-faint">{hint}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {items.map((it, i) => (
-          <span key={i} className={cn("inline-flex items-center gap-1 rounded-full py-1 pl-2.5 pr-1 text-[12.5px]", tone === "danger" ? "bg-danger/10 text-danger" : "bg-accent/12 text-accent-strong")}>
-            {it}
-            <button type="button" aria-label={`Remove ${it}`} onClick={() => onChange(items.filter((_, k) => k !== i))} className="rounded-full p-0.5 opacity-70 hover:bg-black/20 hover:opacity-100">
-              <X className="size-3" />
-            </button>
-          </span>
-        ))}
-        <form onSubmit={(e) => { e.preventDefault(); const t = v.trim(); if (t && !items.includes(t)) onChange([...items, t.slice(0, 80)]); setV(""); }}>
-          <input aria-label={`Add to ${label}`} value={v} onChange={(e) => setV(e.target.value)} placeholder={placeholder} className="h-7 w-36 rounded-full border border-dashed border-line-strong bg-transparent px-3 text-[12.5px] placeholder:text-faint focus:border-accent focus:outline-none" />
-        </form>
-      </div>
     </div>
   );
 }

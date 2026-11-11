@@ -9,7 +9,7 @@ import { DemoLab } from "@/components/settings/demo-lab";
 
 const TABS = [
   { id: "activity", label: "Activity log" },
-  { id: "demo", label: "Demo lab" },
+  { id: "demo", label: "Practice sandbox" },
   { id: "team", label: "Team" },
   { id: "data", label: "Data & backups" },
   { id: "trouble", label: "Troubleshooting" },
@@ -36,7 +36,7 @@ function Advanced() {
     <div className="space-y-5">
       <div>
         <h2 className="text-[18px] font-semibold tracking-[-0.015em]">Advanced</h2>
-        <p className="mt-1 max-w-2xl text-[14px] text-muted">Everything under the hood: a full history of actions, the demo lab for testing tricky situations, your team, data retention and troubleshooting.</p>
+        <p className="mt-1 max-w-2xl text-[14px] text-muted">Everything under the hood: a full history of actions, the practice sandbox for testing tricky situations, your team, data retention and troubleshooting.</p>
       </div>
       <Link href="/insights" className="flex items-center gap-3 rounded-xl border border-line bg-panel px-4 py-3 text-[13px] transition-colors hover:border-line-strong">
         <BarChart3 className="size-4 text-accent" aria-hidden />

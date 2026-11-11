@@ -4,7 +4,7 @@ import { planReply } from "../automation/timing";
 import { resolveReplyProvider, estimateCostMicros, spentTodayMicros, todayKey, type AiSettings } from "../ai/config";
 import { runReplyPipeline, type PipelineResult } from "../ai/pipeline";
 import { PROMPT_VERSION, type CatalogFact, type ReplyContext } from "../ai/prompt";
-import { DEFAULT_STYLE, styleSchema, type Style } from "../ai/style";
+import { DEFAULT_STYLE, starterStyle, styleSchema, type Style } from "../ai/style";
 import { hasBlocking } from "../ai/validator";
 import { AiError } from "../ai/types";
 import { triage } from "../scoring/triage";
@@ -20,7 +20,10 @@ export async function activeStyle(client: Tx, accountId: string, version?: numbe
   const row = version
     ? await client.styleProfile.findUnique({ where: { accountId_version: { accountId, version } } })
     : await client.styleProfile.findFirst({ where: { accountId, active: true }, orderBy: { version: "desc" } });
-  if (!row) return { style: DEFAULT_STYLE, version: null };
+  if (!row) {
+    const acct = await client.creatorAccount.findUnique({ where: { id: accountId }, select: { displayName: true, isSimulated: true } });
+    return { style: acct?.isSimulated ? DEFAULT_STYLE : starterStyle(acct?.displayName ?? "Creator"), version: null };
+  }
   const p = styleSchema.safeParse(row.data);
   return { style: p.success ? p.data : DEFAULT_STYLE, version: row.version };
 }

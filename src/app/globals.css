@@ -4,25 +4,30 @@
  * Design tokens. One restrained accent (periwinkle) on a near-black neutral scale.
  * Status colours are desaturated so they inform without shouting.
  */
+/*
+ * Design tokens: a neutral zinc scale in the shadcn/Vercel style. White is the primary colour; colour is
+ * reserved for meaning (a green "live" dot, a red stop button) and used sparingly.
+ * Token names are kept from the first design so existing classes keep working.
+ */
 @theme {
-  --color-bg: #0a0a0c;
-  --color-panel: #111114;
-  --color-panel-2: #17171b;
-  --color-panel-3: #1e1e23;
-  --color-line: #222228;
-  --color-line-strong: #2e2e36;
-  --color-fg: #ededf0;
-  --color-muted: #a0a0ab;
-  --color-faint: #6c6c78;
-  --color-accent: #8b8cf6;
-  --color-accent-strong: #a5a6fa;
-  --color-accent-ink: #0d0d1f;
-  --color-ok: #5fcf8f;
-  --color-warn: #e8b85c;
-  --color-danger: #f0736a;
-  --color-info: #7fb0f0;
-  --font-sans: "Inter var", Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --color-bg: #09090b;
+  --color-panel: #0c0c0e;
+  --color-panel-2: #141417;
+  --color-panel-3: #1f1f23;
+  --color-line: #1e1e22;
+  --color-line-strong: #2a2a30;
+  --color-fg: #fafafa;
+  --color-muted: #a1a1aa;
+  --color-faint: #71717a;
+  --color-accent: #fafafa;
+  --color-accent-strong: #ffffff;
+  --color-accent-ink: #09090b;
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-danger: #f87171;
+  --color-info: #a1a1aa;
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   --animate-fade-in: fade-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   --animate-rise: rise 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
@@ -70,7 +75,7 @@ body {
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-sans);
-  font-feature-settings: "cv11", "ss01", "ss03";
+  font-feature-settings: "ss01";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -95,9 +100,7 @@ section {
 
 /* Subtle surface gradient used on hero / highlighted cards. */
 .surface-glow {
-  background:
-    radial-gradient(120% 140% at 0% 0%, color-mix(in oklab, var(--color-accent) 12%, transparent) 0%, transparent 55%),
-    var(--color-panel);
+  background: linear-gradient(180deg, color-mix(in oklab, white 3%, transparent) 0%, transparent 60%), var(--color-panel);
 }
 .skeleton {
   background: linear-gradient(90deg, var(--color-panel-2) 0%, var(--color-panel-3) 50%, var(--color-panel-2) 100%);
@@ -109,7 +112,7 @@ input[type="range"].slider {
   appearance: none;
   height: 4px;
   border-radius: 999px;
-  background: linear-gradient(to right, var(--color-accent) 0%, var(--color-accent) var(--fill, 50%), var(--color-line-strong) var(--fill, 50%));
+  background: linear-gradient(to right, var(--color-fg) 0%, var(--color-fg) var(--fill, 50%), var(--color-line-strong) var(--fill, 50%));
   outline-offset: 6px;
 }
 input[type="range"].slider::-webkit-slider-thumb {
@@ -118,7 +121,7 @@ input[type="range"].slider::-webkit-slider-thumb {
   height: 18px;
   border-radius: 999px;
   background: var(--color-fg);
-  border: 3px solid var(--color-accent);
+  border: 3px solid var(--color-bg);
   box-shadow: 0 2px 8px rgb(0 0 0 / 0.4);
   cursor: grab;
 }
@@ -127,7 +130,7 @@ input[type="range"].slider::-moz-range-thumb {
   height: 14px;
   border-radius: 999px;
   background: var(--color-fg);
-  border: 3px solid var(--color-accent);
+  border: 3px solid var(--color-bg);
   cursor: grab;
 }
 

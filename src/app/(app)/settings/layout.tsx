@@ -9,8 +9,8 @@ const SECTIONS = [
   { href: "/settings/accounts", label: "Connections", hint: "Your creator accounts", icon: MessageSquare },
   { href: "/settings/automation", label: "Automation & timing", hint: "Auto-reply per model, reply speed", icon: Bot },
   { href: "/settings/notifications", label: "Notifications", hint: "How we alert you", icon: Bell },
-  { href: "/settings/preferences", label: "Appearance & preferences", hint: "Tour, motion, demo data", icon: SlidersHorizontal },
-  { href: "/settings/advanced", label: "Advanced", hint: "Logs, demo lab, team, data", icon: Wrench },
+  { href: "/settings/preferences", label: "Appearance & preferences", hint: "Tour and motion", icon: SlidersHorizontal },
+  { href: "/settings/advanced", label: "Advanced", hint: "Logs, practice sandbox, team, data", icon: Wrench },
 ];
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {

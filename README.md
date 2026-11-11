@@ -8,7 +8,18 @@ A self-hosted AI chatter for one person managing a few creator accounts. Each mo
 
 The app has three areas: **Home**, **Inbox** and **Settings**. Everything technical lives in Settings, mostly behind "Advanced" sections. The automation status and the **Stop all sends** button are always visible: in the sidebar on desktop, in the top bar on phones.
 
-- **First run.** Home offers **Explore with a demo** (an interactive spotlight tour that uses the simulator, no keys needed) or **Set up my account** (a four-step wizard). See [WALKTHROUGH.md](WALKTHROUGH.md).
+- **First run (required).** The app ships empty: no demo data. A new owner goes through setup at `/onboarding`, and the rest of the app stays locked until it's done:
+  1. Connect real creator accounts through Fans API (required).
+  2. Connect and test the AI (required, or explicitly start on sample replies).
+  3. Each model's personality and PPV menu.
+  4. Off / Drafts / Auto per model, and reply hours.
+
+  Then a required spotlight tour runs on their real setup. Esc pauses it; it continues next visit until finished. See [HANDOFF.md](HANDOFF.md) and [WALKTHROUGH.md](WALKTHROUGH.md).
+- **Practice sandbox (opt-in).** Settings → Advanced can create a clearly labelled practice account on the built-in simulator, for trying tricky situations. It's never seeded by default, and **Remove practice data** deletes it.
+- **Design system:**
+  - shadcn/ui-style components on [Radix](https://www.radix-ui.com/) primitives (`radix-ui`), with [sonner](https://sonner.emilkowal.ski/) toasts and the Geist font.
+  - A neutral zinc palette where white is the primary colour. Colour is reserved for meaning: the red stop button and small status dots.
+  - Phone-friendly: one pane at a time, bottom tab bar, 40px tap targets, and 16px inputs so iPhones don't zoom.
 - **Home:** one card per model, each showing:
   - its connection and personality;
   - an **Off / Drafts / Auto** switch (Auto asks you to confirm and never changes other models);
@@ -78,10 +89,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 docker compose up -d --build
 ```
 
-Open http://localhost:3000. On first visit the login page offers to **create the owner account** (this only works from localhost). Then:
-
-1. Choose **Explore with a demo** for the interactive tour, or **Set up my account**.
-2. More test scenarios live in **Settings → Advanced → Demo lab**.
+Open http://localhost:3000. On first visit the login page offers to **create the owner account** (this only works from localhost). Then follow the required setup and tour.
 
 The **worker** container must be running: it generates drafts, sends on schedule and delivers notifications.
 
@@ -235,7 +243,7 @@ Test a restore into a scratch database before relying on it. Retention purges li
 
 Run on 2026-11-11 (macOS arm64, Node 22.23):
 
-- `npm test`: **68 passed** across 4 files. New tests cover the chat-quality bar (33 scenarios), the per-model auto switch, AI memory, auto-reply delay and PPV in the tour, and time-zone-safe job claiming. This includes the guided-tour flow (simulated account only, drafts on request, nothing sent, restart replaces the test chat) and the Telegram chat lookup.
+- `npm test`: **71 passed** across 4 files. The tests include first-run setup gating, the rule that real accounts never get practice facts, and the rule that removing practice data leaves real accounts alone. New tests cover the chat-quality bar (33 scenarios), the per-model auto switch, AI memory, auto-reply delay and PPV in the tour, and time-zone-safe job claiming. This includes the guided-tour flow (simulated account only, drafts on request, nothing sent, restart replaces the test chat) and the Telegram chat lookup.
   - Policy, timing (including the DST switch and windows that cross midnight), validator, triage/scoring, crypto/redaction, SSRF guard, experiments and disclosure.
   - Integration flows on in-process Postgres:
     - draft and auto modes, debounce, duplicate and out-of-order events, bad signatures

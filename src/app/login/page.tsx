@@ -34,8 +34,8 @@ export default function LoginPage() {
       <div aria-hidden className="pointer-events-none absolute left-1/2 top-[-20%] h-[520px] w-[820px] -translate-x-1/2 rounded-full bg-accent/10 blur-[120px]" />
       <form onSubmit={submit} className="relative w-full max-w-[380px] animate-rise space-y-5 rounded-2xl border border-line bg-panel/90 p-7 shadow-[0_30px_80px_-30px_rgb(0_0_0/0.9)] backdrop-blur-xl">
         <div>
-          <span className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-[#5b5ce0] shadow-[0_8px_24px_-8px_var(--color-accent)]">
-            <MessageCircleHeart className="size-5 text-white" aria-hidden />
+          <span className="flex size-10 items-center justify-center rounded-xl bg-fg">
+            <MessageCircleHeart className="size-5 text-bg" aria-hidden />
           </span>
           <h1 className="mt-5 text-[20px] font-semibold tracking-[-0.02em]">{creating ? "Create your account" : "Welcome back"}</h1>
           <p className="mt-1 text-[13.5px] text-muted">{creating ? "You're the first person here, so you'll be the owner." : "Sign in to your Creator Inbox."}</p>

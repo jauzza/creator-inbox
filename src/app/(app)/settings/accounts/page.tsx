@@ -13,7 +13,7 @@ export default function AccountsPage() {
     <div className="space-y-6">
       <div>
         <h2 className="text-[18px] font-semibold tracking-[-0.015em]">Messaging accounts</h2>
-        <p className="mt-1 max-w-2xl text-[14px] text-muted">Connect the creator account your customer messages come from. You can keep using the demo while you set this up.</p>
+        <p className="mt-1 max-w-2xl text-[14px] text-muted">Connect the creator account your customer messages come from.</p>
       </div>
       <AccountList d={data} reload={reload} />
       <Card title="Connect your account" description="Three short steps. You'll need a Fans API account.">

@@ -16,7 +16,7 @@ export async function seedSimulator() {
   }
   const account = await db().creatorAccount.create({
     data: {
-      displayName: "Mira (Demo)",
+      displayName: "Mira (Practice)",
       provider: "SIMULATOR",
       externalAccountId: "sim_acct_mira",
       isSimulated: true,
@@ -82,7 +82,7 @@ export async function seedSimulator() {
 export async function seedSecondModel() {
   if (await db().creatorAccount.findFirst({ where: { externalAccountId: "sim_acct_luna" } })) return;
   const account = await db().creatorAccount.create({
-    data: { displayName: "Luna (Demo)", provider: "SIMULATOR", externalAccountId: "sim_acct_luna", isSimulated: true, connectionStatus: "CONNECTED", timezone: "America/Los_Angeles", lastSyncAt: new Date(), lastSyncOkAt: new Date() },
+    data: { displayName: "Luna (Practice)", provider: "SIMULATOR", externalAccountId: "sim_acct_luna", isSimulated: true, connectionStatus: "CONNECTED", timezone: "America/Los_Angeles", lastSyncAt: new Date(), lastSyncOkAt: new Date() },
   });
   await db().styleProfile.create({ data: { accountId: account.id, version: 1, active: true, data: CREATORS.luna, changeNote: "Initial style pack (demo)" } });
   for (const [i, c] of CATALOGS.luna.entries()) {

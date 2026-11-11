@@ -49,16 +49,16 @@ function Body({ d, reload }: { d: any; reload: () => void }) {
         <p className="mt-1 max-w-2xl text-[14px] text-muted">Turn auto-reply on per model, and choose how quickly it answers. You can always pause one chat or take over from the inbox.</p>
       </div>
 
-      <Card title="Auto-reply per model" description="Off: the AI stays quiet. Drafts: it writes, you approve. Auto: it replies by itself with natural timing.">
+      <Card id="auto-per-model" tour="auto-per-model" title="Auto-reply per model" description="Off: the AI stays quiet. Drafts: it writes, you approve. Auto: it replies by itself with natural timing.">
         <ul className="divide-y divide-line">
           {d.accounts.map((a: any) => (
             <li key={a.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
               <span className="flex items-center gap-2.5 text-[13.5px] font-medium">
                 <Avatar name={a.displayName} size={30} />
-                {a.displayName.replace(" (Demo)", "")}
+                {a.displayName.replace(/ \((Demo|Practice)\)$/, "")}
                 {a.isSimulated && <SimBadge />}
               </span>
-              <ModelSwitch accountId={a.id} name={a.displayName.replace(" (Demo)", "")} mode={a.mode} isSimulated={a.isSimulated} onChange={() => { reload(); reloadAuto(); }} />
+              <ModelSwitch accountId={a.id} name={a.displayName.replace(/ \((Demo|Practice)\)$/, "")} mode={a.mode} isSimulated={a.isSimulated} onChange={() => { reload(); reloadAuto(); }} />
             </li>
           ))}
         </ul>

@@ -462,3 +462,33 @@ describe("queue timing is time-zone safe", () => {
     }
   });
 });
+
+describe("handoff: real setup, no demo data", () => {
+  it("first-run setup can't be finished without a connected real account and a working (or explicitly accepted) AI", async () => {
+    const { completeOnboarding, onboardingStatus } = await import("@/server/services/onboarding");
+    const owner = { id: ownerId, role: "OWNER" as const };
+    await expect(completeOnboarding(owner, true)).rejects.toThrow(/Connect at least one creator account/); // practice accounts don't count
+    await db.creatorAccount.create({ data: { displayName: "Real Model", provider: "ONLYFANSAPI_COM", externalAccountId: "acct_real_1", connectionStatus: "CONNECTED" } });
+    await expect(completeOnboarding(owner)).rejects.toThrow(/Connect and test an AI model/);
+    await completeOnboarding(owner, true);
+    expect((await onboardingStatus(ownerId)).onboarded).toBe(true);
+  });
+
+  it("a newly connected real account never inherits the practice persona's facts", async () => {
+    const { activeStyle } = await import("@/server/services/drafting");
+    const real = await db.creatorAccount.create({ data: { displayName: "Ava", provider: "ONLYFANSAPI_COM", externalAccountId: "acct_real_2", connectionStatus: "CONNECTED" } });
+    const { style } = await activeStyle(db as any, real.id);
+    expect(style.creatorName).toBe("Ava");
+    expect(style.publicFacts).toEqual([]);
+    expect(style.goodExamples).toEqual([]);
+  });
+
+  it("removing practice data leaves real accounts untouched", async () => {
+    const { removePracticeData } = await import("@/server/services/simulator");
+    const real = await db.creatorAccount.create({ data: { displayName: "Real", provider: "ONLYFANSAPI_COM", externalAccountId: "acct_real_3", connectionStatus: "CONNECTED" } });
+    const r = await removePracticeData(ownerId);
+    expect(r.removed).toBeGreaterThan(0);
+    expect(await db.creatorAccount.count({ where: { isSimulated: true } })).toBe(0);
+    expect(await db.creatorAccount.findUnique({ where: { id: real.id } })).not.toBeNull();
+  });
+});
