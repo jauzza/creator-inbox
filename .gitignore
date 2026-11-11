@@ -1,0 +1,16 @@
+node_modules
+.next
+out
+src/generated
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts
+backups/
+coverage/
+test-results/
+
+# local tooling
+.claude/
+.next-build/

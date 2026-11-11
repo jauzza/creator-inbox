@@ -1,0 +1,668 @@
+// Creator Inbox data model.
+// Conventions: money in integer cents, AI cost in micro-USD, all timestamps UTC.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  OWNER
+  OPERATOR
+}
+
+/// Automation mode. Ordering of restrictiveness: PAUSED > MANUAL > DRAFT > AUTO.
+enum AutomationMode {
+  AUTO
+  DRAFT
+  MANUAL
+  PAUSED
+}
+
+enum ProviderKind {
+  SIMULATOR
+  ONLYFANSAPI_COM
+}
+
+enum ConnectionStatus {
+  NOT_CONNECTED
+  PENDING
+  CONNECTED
+  REAUTH_REQUIRED
+  TWO_FACTOR_REQUIRED
+  VERIFICATION_REQUIRED
+  DISCONNECTED
+  ERROR
+}
+
+enum Direction {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageOrigin {
+  CUSTOMER
+  AI_AUTO
+  AI_APPROVED
+  HUMAN
+  PROVIDER_SYNC // outbound message found on the provider that we did not send (e.g. sent from the platform directly)
+}
+
+enum DraftStatus {
+  PROPOSED
+  APPROVED
+  QUEUED
+  SENDING
+  SENT
+  UNCERTAIN
+  FAILED
+  CANCELLED
+  REJECTED
+  STALE
+  HANDOFF
+}
+
+enum NextAction {
+  ANSWER
+  CLARIFY
+  ACKNOWLEDGE
+  WAIT
+  HANDOFF
+}
+
+enum SendStatus {
+  PENDING
+  IN_FLIGHT
+  ACCEPTED
+  UNCERTAIN
+  FAILED
+  ABANDONED
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+  CANCELLED
+}
+
+enum HandoffStatus {
+  OPEN
+  CLAIMED
+  RESOLVED
+}
+
+enum CustomerOutcome {
+  NONE
+  CONTACTED
+  INTERESTED
+  PURCHASED
+  DECLINED
+  NO_RESPONSE
+}
+
+enum OfferStatus {
+  PROPOSED
+  APPROVED
+  SENT
+  PURCHASED
+  DECLINED
+  REFUNDED
+  CANCELLED
+  UNKNOWN
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(OPERATOR)
+  disabled     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions      Session[]
+  accountAccess AccountAccess[]
+  notes         Note[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+}
+
+model Session {
+  id         String   @id // sha256 of the session token; the raw token only lives in the cookie
+  userId     String
+  csrfToken  String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  userAgent  String?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  key       String // "email:<email>" or "ip:<ip>"
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+}
+
+/// Singleton row (id = "global") holding workspace-wide automation controls.
+model AutomationSettings {
+  id                 String         @id @default("global")
+  globalMode         AutomationMode @default(DRAFT)
+  emergencyStop      Boolean        @default(false)
+  emergencyStopAt    DateTime?
+  emergencyStopById  String?
+  /// JSON validated by src/server/automation/settings.ts (timing, caps, schedules, exclusions)
+  rules              Json
+  dailyAiBudgetMicros Int           @default(2000000)
+  updatedAt          DateTime       @updatedAt
+}
+
+model CreatorAccount {
+  id                 String           @id @default(cuid())
+  displayName        String
+  provider           ProviderKind
+  /// Provider's account identifier (e.g. "acct_..."), never the platform password or session.
+  externalAccountId  String?
+  connectionStatus   ConnectionStatus @default(NOT_CONNECTED)
+  connectionDetail   String?
+  isSimulated        Boolean          @default(false)
+  modeOverride       AutomationMode?
+  disclosureText     String           @default("Some replies here are drafted with AI assistance and reviewed under the creator's rules.")
+  timezone           String           @default("UTC")
+  lastSyncAt         DateTime?
+  lastSyncOkAt       DateTime?
+  lastSyncError      String?
+  syncCursor         String?
+  nextSendAllowedAt  DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  access        AccountAccess[]
+  customers     Customer[]
+  conversations Conversation[]
+  catalog       CatalogItem[]
+  styleProfiles StyleProfile[]
+
+  @@unique([provider, externalAccountId])
+}
+
+model AccountAccess {
+  userId    String
+  accountId String
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account   CreatorAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@id([userId, accountId])
+}
+
+model Customer {
+  id                  String          @id @default(cuid())
+  accountId           String
+  externalId          String
+  displayName         String
+  tags                String[]        @default([])
+  /// Decaying 0-100 intent heuristic. Not a purchase probability.
+  intentScore         Float           @default(0)
+  intentUpdatedAt     DateTime?
+  engagementScore     Float           @default(0)
+  verifiedSpendCents  Int             @default(0)
+  outcome             CustomerOutcome @default(NONE)
+  declinedAt          DateTime?
+  suppressedUntil     DateTime?
+  doNotContact        Boolean         @default(false)
+  assignedUserId      String?
+  /// Customer-provided, service-relevant preferences only (e.g. language). Each entry has provenance.
+  preferences         Json            @default("[]")
+  experimentVariant   String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  account       CreatorAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  signals       IntentSignal[]
+  offers        Offer[]
+  purchases     Purchase[]
+
+  @@unique([accountId, externalId])
+  @@index([accountId, intentScore])
+}
+
+model Conversation {
+  id                String          @id @default(cuid())
+  accountId         String
+  customerId        String
+  externalChatId    String
+  modeOverride      AutomationMode?
+  takenOverById     String?
+  takenOverAt       DateTime?
+  takeoverExpiresAt DateTime?
+  /// Monotonic counter bumped on every inbound/outbound message and control change; queued work records the version it was based on.
+  version           Int             @default(0)
+  lastInboundAt     DateTime?
+  lastOutboundAt    DateTime?
+  firstUnansweredAt DateTime?
+  unreadCount       Int             @default(0)
+  summary           String?
+  summaryUpdatedAt  DateTime?
+  tags              String[]        @default([])
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  account   CreatorAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  customer  Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  drafts    Draft[]
+  notes     Note[]
+  handoffs  Handoff[]
+  jobs      Job[]
+
+  @@unique([accountId, externalChatId])
+  @@index([accountId, lastInboundAt])
+}
+
+model Message {
+  id                String        @id @default(cuid())
+  conversationId    String
+  direction         Direction
+  origin            MessageOrigin
+  body              String
+  /// Provider message id. Unique per conversation to deduplicate webhook + poll deliveries.
+  externalId        String?
+  /// Provider-reported timestamp; ordering uses this, not arrival time.
+  sentAt            DateTime
+  receivedAt        DateTime      @default(now())
+  draftId           String?       @unique
+  sentById          String?
+  intentDelta       Float?
+  createdAt         DateTime      @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, externalId])
+  @@index([conversationId, sentAt])
+}
+
+model Draft {
+  id                  String      @id @default(cuid())
+  conversationId      String
+  status              DraftStatus @default(PROPOSED)
+  nextAction          NextAction
+  body                String
+  originalBody        String
+  explanation         String?
+  /// "auto" when the policy allowed automatic sending, otherwise "draft"
+  intendedMode        String
+  basedOnVersion      Int
+  basedOnMessageId    String?
+  model               String
+  promptVersion       String
+  styleVersion        Int?
+  validatorIssues     Json        @default("[]")
+  rewriteCount        Int         @default(0)
+  labels              String[]    @default([])
+  scheduledFor        DateTime?
+  approvedById        String?
+  approvedAt          DateTime?
+  rejectedReason      String?
+  tokensIn            Int         @default(0)
+  tokensOut           Int         @default(0)
+  costMicros          Int         @default(0)
+  latencyMs           Int         @default(0)
+  variant             String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  conversation Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sends        OutboundSend[]
+
+  @@index([conversationId, status])
+}
+
+/// Transactional outbox for provider sends. One row per send attempt group, keyed by an idempotency key.
+model OutboundSend {
+  id                String     @id @default(cuid())
+  draftId           String?
+  conversationId    String
+  idempotencyKey    String     @unique
+  body              String
+  origin            MessageOrigin
+  status            SendStatus @default(PENDING)
+  attempts          Int        @default(0)
+  providerMessageId String?
+  lastError         String?
+  requestedById     String?
+  isSimulated       Boolean
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  draft Draft? @relation(fields: [draftId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([conversationId])
+}
+
+/// Durable job queue in Postgres (claimed with FOR UPDATE SKIP LOCKED). See ARCHITECTURE.md.
+model Job {
+  id             String    @id @default(cuid())
+  type           String
+  status         JobStatus @default(PENDING)
+  runAt          DateTime
+  conversationId String?
+  payload        Json      @default("{}")
+  /// Unique only while active; enforced with a partial unique index in the migration.
+  dedupeKey      String?
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  lockedAt       DateTime?
+  lockedBy       String?
+  lastError      String?
+  /// For debounce: the time the first event in the batch arrived (max-wait anchor).
+  firstEventAt   DateTime?
+  createdAt      DateTime  @default(now())
+  finishedAt     DateTime?
+
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAt])
+  @@index([conversationId, status])
+}
+
+model Note {
+  id             String   @id @default(cuid())
+  conversationId String
+  userId         String
+  body           String
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+}
+
+model Handoff {
+  id             String        @id @default(cuid())
+  conversationId String
+  reason         String
+  category       String
+  priority       Int           @default(50)
+  status         HandoffStatus @default(OPEN)
+  ownerId        String?
+  evidence       String?
+  outcome        String?
+  useful         Boolean?
+  createdAt      DateTime      @default(now())
+  claimedAt      DateTime?
+  resolvedAt     DateTime?
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([status, priority])
+}
+
+model IntentSignal {
+  id         String   @id @default(cuid())
+  customerId String
+  messageId  String?
+  signal     String
+  weight     Float
+  evidence   String
+  source     String   @default("rules") // "rules" | "model"
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, createdAt])
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  userId     String?
+  kind       String
+  title      String
+  body       String
+  link       String?
+  dedupeKey  String?
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([dedupeKey, createdAt])
+}
+
+model StyleProfile {
+  id          String   @id @default(cuid())
+  accountId   String
+  version     Int
+  active      Boolean  @default(false)
+  /// JSON validated by src/server/ai/style.ts
+  data        Json
+  changeNote  String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  account CreatorAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, version])
+}
+
+model Secret {
+  id         String   @id // e.g. "messaging.onlyfansapi_com", "ai.primary", "telegram.bot"
+  ciphertext String
+  iv         String
+  authTag    String
+  keyVersion Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model IntegrationConfig {
+  id             String    @id // "messaging", "ai", "telegram"
+  provider       String
+  /// Non-secret settings only (base URL, model ids, chat id, ...).
+  settings       Json      @default("{}")
+  enabled        Boolean   @default(false)
+  lastTestAt     DateTime?
+  lastTestOk     Boolean?
+  lastTestDetail String?
+  updatedAt      DateTime  @updatedAt
+}
+
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  provider    String
+  eventId     String
+  eventType   String
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  error       String?
+
+  @@unique([provider, eventId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actorKind String   @default("user") // "user" | "system" | "worker"
+  action    String
+  target    String?
+  details   Json     @default("{}")
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+}
+
+model AiUsage {
+  id         String   @id @default(cuid())
+  day        String // YYYY-MM-DD UTC
+  provider   String
+  model      String
+  purpose    String // "reply" | "score" | "eval" | "preview" | "test"
+  tokensIn   Int
+  tokensOut  Int
+  costMicros Int
+  latencyMs  Int
+  ok         Boolean
+  createdAt  DateTime @default(now())
+
+  @@index([day])
+}
+
+model CatalogItem {
+  id              String   @id @default(cuid())
+  accountId       String
+  externalAssetId String
+  title           String
+  /// Non-explicit operator-written description used as approved fact.
+  description     String
+  priceCents      Int?
+  priceConfirmed  Boolean  @default(false)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  account   CreatorAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  offers    Offer[]
+  purchases Purchase[]
+
+  @@unique([accountId, externalAssetId])
+}
+
+model Offer {
+  id             String      @id @default(cuid())
+  customerId     String
+  catalogItemId  String
+  priceCents     Int
+  status         OfferStatus @default(PROPOSED)
+  /// sha256(customerId|externalAssetId|priceCents) frozen at approval. Any change invalidates approval.
+  approvalHash   String?
+  approvedById   String?
+  approvedAt     DateTime?
+  sentAt         DateTime?
+  operatorId     String?
+  allowRepeat    Boolean     @default(false)
+  note           String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  catalogItem CatalogItem @relation(fields: [catalogItemId], references: [id])
+}
+
+model Purchase {
+  id            String   @id @default(cuid())
+  customerId    String
+  catalogItemId String?
+  amountCents   Int
+  feeCents      Int?
+  refundedCents Int      @default(0)
+  verified      Boolean
+  source        String // "provider" | "manual" | "simulator"
+  externalTxnId String?
+  attribution   String   @default("unknown") // "offer:<id>" | "unknown"
+  occurredAt    DateTime
+  createdAt     DateTime @default(now())
+
+  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  catalogItem CatalogItem? @relation(fields: [catalogItemId], references: [id])
+
+  @@unique([source, externalTxnId])
+}
+
+model FunnelEvent {
+  id             String   @id @default(cuid())
+  type           String // reply_drafted | reply_approved | reply_edited | reply_sent | reply_rejected | offer_sent | purchase_confirmed | decline | refund | handoff_created | takeover
+  accountId      String?
+  conversationId String?
+  customerId     String?
+  draftId        String?
+  offerId        String?
+  variant        String?
+  isSimulated    Boolean  @default(false)
+  meta           Json     @default("{}")
+  createdAt      DateTime @default(now())
+
+  @@index([type, createdAt])
+}
+
+model EvalCase {
+  id         String   @id @default(cuid())
+  key        String   @unique
+  category   String
+  transcript Json // [{direction, body}]
+  facts      Json     @default("[]")
+  expected   Json // {action: "ANSWER"|..., mustMention?: [], mustNotMention?: []}
+  createdAt  DateTime @default(now())
+
+  results EvalResult[]
+}
+
+model EvalRun {
+  id          String   @id @default(cuid())
+  label       String
+  provider    String
+  model       String
+  promptVersion String
+  styleVersion Int?
+  status      String   @default("running")
+  createdAt   DateTime @default(now())
+  finishedAt  DateTime?
+
+  results EvalResult[]
+}
+
+model EvalResult {
+  id            String   @id @default(cuid())
+  runId         String
+  caseId        String
+  blindLabel    String // shown to reviewers instead of model/prompt names
+  action        String?
+  body          String?
+  error         String?
+  autoChecks    Json     @default("{}")
+  latencyMs     Int      @default(0)
+  tokensIn      Int      @default(0)
+  tokensOut     Int      @default(0)
+  costMicros    Int      @default(0)
+  reviewerScore Int?
+  reviewerNotes String?
+  preferred     Boolean?
+  createdAt     DateTime @default(now())
+
+  run  EvalRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  case EvalCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, caseId])
+}
+
+/// Simulator-only state: recorded "sent" messages and next-send failure injection. Never used by live providers.
+model SimulatorState {
+  id              String   @id @default("sim")
+  nextSendFailure String? // null | "timeout_delivered" | "timeout_lost" | "rejected" | "rate_limited"
+  aiFailNext      Int      @default(0)
+  updatedAt       DateTime @updatedAt
+}
+
+/// What the simulated provider "accepted". Lets reconciliation of ambiguous timeouts be exercised offline.
+model SimulatorSent {
+  id                String   @id @default(cuid())
+  idempotencyKey    String   @unique
+  externalChatId    String
+  body              String
+  providerMessageId String   @unique
+  createdAt         DateTime @default(now())
+}

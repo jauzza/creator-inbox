@@ -1,0 +1,8 @@
+# Automatic HTTPS (Let's Encrypt) for the dashboard and the provider webhook endpoint.
+{$DOMAIN} {
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	reverse_proxy app:3000 {
+		header_up X-Forwarded-For {remote_host}
+	}
+}

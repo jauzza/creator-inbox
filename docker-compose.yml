@@ -1,0 +1,82 @@
+# Creator Inbox: app + worker + Postgres (+ optional Caddy HTTPS proxy).
+# Local:  docker compose up -d --build            → http://localhost:3000
+# VPS:    docker compose --profile proxy up -d --build   (set DOMAIN, COOKIE_SECURE=true, APP_URL=https://DOMAIN)
+# Redis/BullMQ is intentionally not used: the durable queue lives in Postgres (see ARCHITECTURE.md).
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql://inbox:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/creator_inbox
+  MASTER_KEY: ${MASTER_KEY:?set MASTER_KEY in .env (npm run secret:generate)}
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+  WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+  WORKER_POLL_MS: ${WORKER_POLL_MS:-1000}
+  SEED_OWNER_EMAIL: ${SEED_OWNER_EMAIL:-}
+  SEED_OWNER_PASSWORD: ${SEED_OWNER_PASSWORD:-}
+  SIMULATOR_WEBHOOK_SECRET: ${SIMULATOR_WEBHOOK_SECRET:-local-simulator-secret}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: inbox
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: creator_inbox
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Not published to the host: only reachable on the private compose network.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inbox -d creator_inbox"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    build: .
+    environment: *app-env
+    command: ["sh", "-c", "npx prisma migrate deploy && npx tsx prisma/seed.ts"]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment: *app-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    # Bound to localhost only. On a VPS, Caddy (profile "proxy") terminates HTTPS in front of it.
+    ports:
+      - "127.0.0.1:${APP_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      retries: 3
+
+  worker:
+    build: .
+    restart: unless-stopped
+    environment: *app-env
+    command: ["npx", "tsx", "src/worker/main.ts"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    stop_grace_period: 30s
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["proxy"]
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN for the proxy profile}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [app]
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
