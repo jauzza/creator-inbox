@@ -8,7 +8,7 @@ import { liveProvider, messagingSettingsSchema, getMessagingSettings } from "@/s
 import { aiSettingsSchema, buildProvider, getAiSettings, estimateCostMicros, todayKey } from "@/server/ai/config";
 import { AiError } from "@/server/ai/types";
 import { validateOutboundUrl } from "@/server/net/safeFetch";
-import { sendTelegram } from "@/server/notify/telegram";
+import { recentTelegramChats, sendTelegram } from "@/server/notify/telegram";
 import { enqueue } from "@/server/queue/jobs";
 
 const keyField = z.string().trim().min(8).max(500);
@@ -45,6 +45,7 @@ const telegram = z.discriminatedUnion("action", [
   z.object({ action: z.literal("save_settings"), enabled: z.boolean(), chatId: z.string().trim().max(40).regex(/^-?\d*$/, "Chat id is numeric"), kinds: z.array(z.string()).max(10) }),
   z.object({ action: z.literal("test") }),
   z.object({ action: z.literal("in_app_test") }),
+  z.object({ action: z.literal("find_chats"), token: keyField.optional() }),
 ]);
 
 export const POST = api({ auth: "owner" }, async ({ user, params, req }) => {
@@ -181,8 +182,15 @@ export const POST = api({ auth: "owner" }, async ({ user, params, req }) => {
         await db().integrationConfig.upsert({ where: { id: "telegram" }, create: { id: "telegram", provider: "telegram", enabled: b.enabled, settings: { chatId: b.chatId, kinds: b.kinds } }, update: { enabled: b.enabled, settings: { chatId: b.chatId, kinds: b.kinds } } });
         await audit("integration.telegram.settings", { actorId: user.id, details: { enabled: b.enabled } });
         return { ok: true };
+      case "find_chats": {
+        // Uses the token being entered (not yet saved) or the saved one; never returns the token.
+        const token = b.token ?? (await getSecret("telegram.bot"));
+        if (!token) throw new HttpError(400, "Paste your bot token first");
+        const r = await recentTelegramChats(token);
+        return r.ok ? { ok: true, chats: r.chats } : { ok: false, detail: r.error };
+      }
       case "in_app_test":
-        await db().notification.create({ data: { kind: "test", title: "Notification test", body: "In-app notifications work. No customer data included.", link: "/activity" } });
+        await db().notification.create({ data: { kind: "test", title: "Notification test", body: "In-app notifications work. No customer data included.", link: "/settings/notifications" } });
         return { ok: true, detail: "In-app test notification created" };
       case "test": {
         const token = await getSecret("telegram.bot");

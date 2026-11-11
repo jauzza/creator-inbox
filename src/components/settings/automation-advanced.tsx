@@ -5,7 +5,7 @@ import { ago, fmtTime, post, usd, useApi } from "@/lib/client";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export default function AutomationPage() {
+function AutomationPage() {
   const { data, error, loading, reload } = useApi<any>("/api/automation");
   const [tab, setTab] = useState<"controls" | "timing" | "rules" | "queue">("controls");
   if (loading && !data) return <Loading />;
@@ -22,7 +22,7 @@ export default function AutomationPage() {
   );
 }
 
-function Controls({ d, reload }: { d: any; reload: () => void }) {
+export function Controls({ d, reload }: { d: any; reload: () => void }) {
   const { busy, run } = useAction();
   const [confirmAuto, setConfirmAuto] = useState(false);
   const [budget, setBudget] = useState((d.dailyAiBudgetMicros / 1_000_000).toFixed(2));
@@ -82,7 +82,7 @@ function num(v: string) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function RulesEditor({ d, reload, section }: { d: any; reload: () => void; section: "timing" | "rules" }) {
+export function RulesEditor({ d, reload, section }: { d: any; reload: () => void; section: "timing" | "rules" }) {
   const [r, setR] = useState<any>(d.rules);
   const { busy, run } = useAction();
   const [preview, setPreview] = useState<any>(null);
@@ -224,7 +224,7 @@ function RulesEditor({ d, reload, section }: { d: any; reload: () => void; secti
   );
 }
 
-function Queue() {
+export function Queue() {
   const [status, setStatus] = useState<"active" | "done">("active");
   const { data, error, reload } = useApi<any>(`/api/automation/jobs?status=${status}`, { poll: 4000 });
   const { run } = useAction();

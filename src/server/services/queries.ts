@@ -27,7 +27,62 @@ export async function overview(user: SessionUser) {
     db().purchase.aggregate({ where: { source: "simulator", occurredAt: { gte: since30 }, customer: { accountId: { in: ids } } }, _sum: { amountCents: true }, _count: true }),
   ]);
   const hbAt = (hb?.settings as any)?.at ? new Date((hb!.settings as any).at) : null;
+
+  // Home screen: plain-language status, who needs a person, and what the AI is helping with.
+  const aiRow = await db().integrationConfig.findUnique({ where: { id: "ai" } });
+  const aiSettings = { provider: "offline", replyModel: "", verifiedModel: null as string | null, ...((aiRow?.settings as object) ?? {}) } as { provider: string; replyModel: string; verifiedModel: string | null };
+  const convs = await db().conversation.findMany({
+    where: conv,
+    include: {
+      account: true,
+      customer: true,
+      messages: { orderBy: { sentAt: "desc" }, take: 1 },
+      drafts: { where: { status: { in: ["PROPOSED", "HANDOFF", "UNCERTAIN", "QUEUED"] } }, orderBy: { createdAt: "desc" }, take: 1 },
+      handoffs: { where: { status: { in: ["OPEN", "CLAIMED"] } }, orderBy: { priority: "desc" }, take: 1 },
+    },
+    orderBy: [{ lastInboundAt: { sort: "desc", nulls: "last" } }],
+    take: 500,
+  });
+  let aiHelping = 0;
+  const attention: { conversationId: string; customer: string; isSimulated: boolean; kind: "handoff" | "draft" | "uncertain"; reason: string; preview: string | null; at: Date | null; priority: number }[] = [];
+  for (const c of convs) {
+    const pol = policyFor(c, auto);
+    if (pol.aiMayDraft) aiHelping++;
+    const h = c.handoffs[0];
+    const d = c.drafts[0];
+    const base = { conversationId: c.id, customer: c.customer.displayName, isSimulated: c.account.isSimulated, preview: c.messages[0]?.body.slice(0, 140) ?? null, at: c.lastInboundAt };
+    if (h) attention.push({ ...base, kind: "handoff", reason: h.reason, priority: 100 + h.priority });
+    else if (d?.status === "UNCERTAIN") attention.push({ ...base, kind: "uncertain", reason: "We couldn't confirm a reply was delivered", priority: 90 });
+    else if (d?.status === "PROPOSED" && d.nextAction !== "WAIT") attention.push({ ...base, kind: "draft", reason: "A reply is ready for your approval", priority: 50 });
+  }
+  attention.sort((a, b) => b.priority - a.priority || (b.at?.getTime() ?? 0) - (a.at?.getTime() ?? 0));
+  const dayStart = new Date();
+  dayStart.setHours(0, 0, 0, 0);
+  const [inToday, outToday, inTodaySim, outTodaySim] = await Promise.all([
+    db().message.count({ where: { direction: "INBOUND", sentAt: { gte: dayStart }, conversation: { ...conv, account: { isSimulated: false } } } }),
+    db().message.count({ where: { direction: "OUTBOUND", sentAt: { gte: dayStart }, conversation: { ...conv, account: { isSimulated: false } } } }),
+    db().message.count({ where: { direction: "INBOUND", sentAt: { gte: dayStart }, conversation: { ...conv, account: { isSimulated: true } } } }),
+    db().message.count({ where: { direction: "OUTBOUND", sentAt: { gte: dayStart }, conversation: { ...conv, account: { isSimulated: true } } } }),
+  ]);
+  const live = accounts.filter((a) => !a.isSimulated);
+
   return {
+    status: {
+      ai: {
+        kind: aiSettings.provider === "offline" ? "sample" : aiSettings.verifiedModel && aiSettings.verifiedModel === aiSettings.replyModel ? "connected" : "needs_test",
+        provider: aiSettings.provider,
+        model: aiSettings.provider === "offline" ? null : aiSettings.replyModel,
+      },
+      messaging: {
+        liveAccounts: live.length,
+        connected: live.filter((a) => a.connectionStatus === "CONNECTED").length,
+        problems: live.filter((a) => a.connectionStatus !== "CONNECTED" || a.lastSyncError).map((a) => ({ name: a.displayName, status: a.connectionStatus, detail: a.lastSyncError ?? a.connectionDetail })),
+      },
+    },
+    aiHelping,
+    attention: attention.slice(0, 8),
+    attentionTotal: attention.length,
+    today: { real: { received: inToday, sent: outToday }, simulated: { received: inTodaySim, sent: outTodaySim } },
     automation: { globalMode: auto.globalMode, emergencyStop: auto.emergencyStop, emergencyStopAt: auto.emergencyStopAt, dailyBudgetMicros: auto.dailyAiBudgetMicros },
     worker: { running: !!hbAt && Date.now() - hbAt.getTime() < 60_000, lastSeen: hbAt },
     accounts: accounts.map((a) => ({
@@ -60,6 +115,7 @@ export async function listConversations(user: SessionUser, opts: { filter?: stri
   const where: any = { accountId: { in: accountIds } };
   if (opts.filter === "unread") where.unreadCount = { gt: 0 };
   if (opts.filter === "handoff") where.handoffs = { some: { status: { in: ["OPEN", "CLAIMED"] } } };
+  if (opts.filter === "needs_you") where.OR = [{ handoffs: { some: { status: { in: ["OPEN", "CLAIMED"] } } } }, { drafts: { some: { status: { in: ["UNCERTAIN", "HANDOFF"] } } } }];
   if (opts.filter === "drafts") where.drafts = { some: { status: { in: ["PROPOSED", "QUEUED", "UNCERTAIN"] } } };
   if (opts.filter === "mine") where.takenOverById = user.id;
   if (opts.q) where.customer = { displayName: { contains: opts.q, mode: "insensitive" } };
@@ -87,9 +143,10 @@ export async function listConversations(user: SessionUser, opts: { filter?: stri
       unread: c.unreadCount,
       lastMessage: last ? { body: last.body.slice(0, 120), direction: last.direction, at: last.sentAt } : null,
       lastInboundAt: c.lastInboundAt,
-      draft: c.drafts[0] ? { status: c.drafts[0].status, scheduledFor: c.drafts[0].scheduledFor } : null,
-      handoff: c.handoffs[0] ? { category: c.handoffs[0].category, priority: c.handoffs[0].priority } : null,
+      draft: c.drafts[0] ? { status: c.drafts[0].status, scheduledFor: c.drafts[0].scheduledFor, nextAction: c.drafts[0].nextAction } : null,
+      handoff: c.handoffs[0] ? { category: c.handoffs[0].category, priority: c.handoffs[0].priority, reason: c.handoffs[0].reason } : null,
       takenOver: !!c.takenOverById,
+      isTour: c.account.isSimulated && c.externalChatId === "sim_tour_guest",
     };
   });
 }
@@ -123,6 +180,7 @@ export async function conversationDetail(conversationId: string) {
   return {
     id: c.id,
     version: c.version,
+    isTour: c.account.isSimulated && c.externalChatId === "sim_tour_guest",
     account: { id: c.account.id, name: c.account.displayName, isSimulated: c.account.isSimulated, connectionStatus: c.account.connectionStatus, capabilities: provider?.capabilities ?? null, providerLabel: provider?.label ?? "Provider not configured" },
     policy: { mode: pol.mode, reasons: pol.reasons, aiMayDraft: pol.aiMayDraft, aiMayAutoSend: pol.aiMayAutoSend, sendsAllowed: pol.sendsAllowed, override: c.modeOverride },
     takeover: c.takenOverById ? { by: takenOverBy?.name ?? "someone", at: c.takenOverAt, expiresAt: c.takeoverExpiresAt } : null,

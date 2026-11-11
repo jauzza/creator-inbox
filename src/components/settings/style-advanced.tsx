@@ -5,7 +5,7 @@ import { ago, post, usd, useApi } from "@/lib/client";
 
 const lines = (s: string) => s.split("\n").map((x) => x.trim()).filter(Boolean);
 
-export default function StylePage() {
+function StylePage() {
   const { data, error, loading, reload } = useApi<any>("/api/style");
   const [tab, setTab] = useState<"pack" | "preview" | "workbench" | "experiment">("pack");
   if (loading && !data) return <Loading />;
@@ -22,7 +22,7 @@ export default function StylePage() {
   );
 }
 
-function Pack({ d, reload }: { d: any; reload: () => void }) {
+export function Pack({ d, reload }: { d: any; reload: () => void }) {
   const [s, setS] = useState<any>(d.active.data);
   const [disclosure, setDisclosure] = useState(d.account.disclosureText);
   const [note, setNote] = useState("");
@@ -88,7 +88,7 @@ function Pack({ d, reload }: { d: any; reload: () => void }) {
   );
 }
 
-function Preview({ d }: { d: any }) {
+export function Preview({ d }: { d: any }) {
   const [convo, setConvo] = useState("customer: hey! how much is the autumn hike set?\ncustomer: and when do you post new ones?");
   const [showPrompt, setShowPrompt] = useState(false);
   const [res, setRes] = useState<any>(null);
@@ -127,7 +127,7 @@ function Preview({ d }: { d: any }) {
   );
 }
 
-function Workbench() {
+export function Workbench() {
   const { data, error, reload } = useApi<any>("/api/evals", { poll: 5000 });
   const [a, setA] = useState("");
   const [b, setB] = useState("");
@@ -191,7 +191,7 @@ function Workbench() {
   );
 }
 
-function Experiment({ d, reload }: { d: any; reload: () => void }) {
+export function Experiment({ d, reload }: { d: any; reload: () => void }) {
   const e = d.experiment;
   const [enabled, setEnabled] = useState(!!e?.enabled);
   const [key, setKey] = useState(e?.key ?? "style-test-1");

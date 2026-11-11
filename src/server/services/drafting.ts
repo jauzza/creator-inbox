@@ -90,7 +90,7 @@ export async function generateReply(conversationId: string): Promise<{ outcome: 
       createHandoff(tx, { conversationId, category: "budget", priority: 60, evidence: "Daily AI budget reached", rules: automation.rules, pause: false, customerLabel: customerLabel(conv0.customerId) }),
     );
     await db().$transaction((tx) =>
-      notify(tx, { kind: "budget", title: "Daily AI budget reached", body: "New drafts are paused until tomorrow or until the cap is raised.", link: "/automation", dedupeKey: "budget", cooldownMin: 360 }),
+      notify(tx, { kind: "budget", title: "Today's AI spending limit was reached", body: "New drafts are paused until tomorrow. You can raise the limit in Settings → Automation.", link: "/settings/automation", dedupeKey: "budget", cooldownMin: 360 }),
     );
     return { outcome: "budget_exceeded" };
   }
@@ -208,7 +208,7 @@ export async function generateReply(conversationId: string): Promise<{ outcome: 
       if (scheduledFor) {
         await enqueue(tx, { type: "dispatch_draft", conversationId, runAt: scheduledFor, payload: { draftId: draft.id }, dedupeKey: `draft:${draft.id}` });
       } else {
-        await notify(tx, { kind: "draft_ready", title: "Draft ready for review", body: `${label}`, link: `/inbox?c=${conversationId}`, dedupeKey: `draft:${conversationId}`, cooldownMin: auto.rules.notifications.cooldownMin });
+        await notify(tx, { kind: "draft_ready", title: "A reply is ready for you", body: `${label}`, link: `/inbox?c=${conversationId}`, dedupeKey: `draft:${conversationId}`, cooldownMin: auto.rules.notifications.cooldownMin });
       }
       log("info", "draft_created", { conversationId, draftId: draft.id, status: draft.status });
       return { outcome: scheduledFor ? "queued" : "proposed" };

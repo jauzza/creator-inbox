@@ -6,10 +6,23 @@ A self-hosted inbox and customer-management system for creator accounts. It brin
 
 ## What it does
 
+The app has four areas: **Home**, **Inbox**, **Customers** and **Settings**. Everything technical lives in Settings, mostly behind "Advanced" sections. The automation status and the **Stop all sends** button are always visible: in the sidebar on desktop, in the top bar on phones.
+
+- **First run.** Home offers **Explore with a demo** (an interactive spotlight tour that uses the simulator, no keys needed) or **Set up my account** (a four-step wizard). See [WALKTHROUGH.md](WALKTHROUGH.md).
+- **Home.**
+  - Plain-language status cards: Inbox, AI assistant, Automation.
+  - A "Needs you" queue.
+  - Today's numbers, with demo numbers labelled.
+  - Setup progress.
+  - A link to the full report.
 - **Inbox.**
-  - Three panes on desktop (list, conversation, customer); one pane at a time on mobile.
-  - Each conversation shows Auto / Draft / Manual / Paused prominently.
-  - Controls: take over, resume, pause, mode override, redraft, edit/approve/reject drafts, cancel a queued reply, manual send, internal notes, tags, summary and preferences.
+  - Conversation list with filters: All · Needs you · Unread · Drafts · Mine.
+  - Chat bubbles with day separators and "who sent this" labels.
+  - A highlighted draft card marked **Not sent yet**, with "Why this reply?" and feedback chips.
+  - Customer details in a drawer.
+  - One click to **Pause AI / Resume AI** and **Take over / Hand back to AI**.
+  - Handoffs are a "Needs you" banner inside the chat, with *I'm on it* and *Mark as handled*.
+  - Per-chat mode, redraft, notes, tags, summary, preferences and offers are all still there.
 - **AI drafts for permitted, non-explicit replies only.**
   - Deterministic triage runs first. Explicit requests, billing disputes, complaints, safety issues, opt-outs and "real person" requests go straight to a human.
   - The model's JSON output is checked against a schema and validated: no invented prices, live activity, delivery claims, pressure or denial of automation.
@@ -28,9 +41,14 @@ A self-hosted inbox and customer-management system for creator accounts. It brin
   - A decaying 0–100 intent heuristic, with evidence for every point. It is a ranking, not a probability.
   - Engagement and verified spend are tracked separately.
   - Outcomes, decline cooldowns, a do-not-contact flag, and an offer ledger in which a human confirms recipient, asset and price. Paid messages are sent by a person on the platform.
-- **Creator style.**
-  - Versioned style packs (facts, boundaries, examples, tone controls) with rollback.
-  - A preview playground that shows the exact prompt and the settings applied.
+- **AI Assistant (personality editor).**
+  - Personality presets: Friendly, Playful, Confident, Professional, Short & sweet.
+  - Reply length, emoji, a Casual↔Polished slider and a Reserved↔Expressive slider.
+  - Facts, favourite phrases, "never say", boundaries and example replies.
+  - A **live preview** with **Try this style** and a before/after comparison that lists the changed settings. **Keep** saves a new version; **Undo** reverts.
+  - Previews say clearly whether a connected model or the built-in **sample rules** wrote them. The sample rules apply your tone, length, emoji, formality and expressiveness with simple text rules, so changes are visible without a key.
+  - Model, address, token limits and creativity (temperature) live under Advanced → AI connection → Technical options.
+  - Versioned style packs with rollback.
   - A reply-quality workbench with 81 synthetic eval cases and blind A/B review.
   - Customer-level experiments.
 - **Analytics.** Every metric states its data source. Simulated data is kept separate, and the app says plainly when there isn't enough evidence.
@@ -60,13 +78,12 @@ docker compose up -d --build
 
 Open http://localhost:3000. On first visit the login page offers to **create the owner account** (this only works from localhost). Then:
 
-1. Go to **Guide**, or follow the checklist on Overview.
-2. In **Simulator**, fire a scenario.
-3. Watch it appear in **Inbox**.
+1. Choose **Explore with a demo** for the interactive tour, or **Set up my account**.
+2. More test scenarios live in **Settings → Advanced → Demo lab**.
 
 The **worker** container must be running: it generates drafts, sends on schedule and delivers notifications.
 
-> **Local mode only works while your computer is awake.** Scheduled replies and polling pause when it sleeps and resume on wake: jobs are durable, and stale drafts are re-evaluated rather than sent late. Provider **webhooks cannot reach localhost**; use polling (Integrations → Messaging) or the VPS setup.
+> **Local mode only works while your computer is awake.** Scheduled replies and polling pause when it sleeps and resume on wake: jobs are durable, and stale drafts are re-evaluated rather than sent late. Provider **webhooks cannot reach localhost**; use automatic checking (Settings → Messaging accounts) or the VPS setup.
 
 ## Quick start (local, no Docker)
 
@@ -115,7 +132,7 @@ sh scripts/dev-local.sh
    docker compose exec app npx tsx scripts/create-user.ts --email you@example.com --role owner
    ```
 
-6. Optional: register `https://inbox.example.com/api/webhooks/onlyfansapi_com` in the provider dashboard with a signing secret, and paste the same secret under Integrations.
+6. Optional: register `https://inbox.example.com/api/webhooks/onlyfansapi_com` in the provider dashboard with a signing secret, and paste the same secret under Settings → Messaging accounts → Advanced.
 
 Postgres is never published to the host; it is reachable only on the private compose network. The app binds to `127.0.0.1`, and only Caddy is public.
 
@@ -139,10 +156,10 @@ docker compose exec db psql -U inbox -d creator_inbox -c "select type,status,cou
 
 | What | Where | Needed for |
 |---|---|---|
-| Fans API key | Integrations → Messaging | Live messaging (optional; the simulator needs none) |
+| Fans API key | Settings → Messaging accounts | Live messaging (optional; the simulator needs none) |
 | Creator authorization | Provider's hosted flow or dashboard | Connecting the real account (the creator does this) |
-| DeepSeek (or OpenAI-compatible) key | Integrations → AI | Real AI drafts; the offline simulator rules need none |
-| Telegram bot token + chat id | Integrations → Telegram | Optional external alerts |
+| DeepSeek (or OpenAI-compatible) key | Settings → AI Assistant → Advanced → AI connection (or the setup wizard) | Real AI drafts; the offline simulator rules need none |
+| Telegram bot token + chat id | Settings → Notifications ("Find it for me" fills in the chat id) | Optional external alerts |
 
 Keys are encrypted with `MASTER_KEY`, never shown again, never sent to the AI and never logged. Rotate a key by saving a new one; delete it with the Delete button.
 
@@ -192,10 +209,10 @@ Test a restore into a scratch database before relying on it. Retention purges li
 
 | Symptom | Fix |
 |---|---|
-| No drafts appear | The worker isn't running (`docker compose logs worker`), or the chat is Manual/Paused/excluded (tag `manual-only`). Overview shows a warning when the worker heartbeat is stale. |
-| "Model has not passed a connection test" | Integrations → AI → Test model. Any change to provider, model or URL requires a new test. |
-| Webhooks never arrive | Localhost isn't reachable: use polling, or deploy with HTTPS. Check that the signing secret matches (bad signatures get a 401 and are logged). |
-| Account shows 2FA / re-auth required | Reconnect through the provider, then Integrations → Sync now. |
+| No drafts appear | The worker isn't running (`docker compose logs worker`), or the chat is Manual/Paused/excluded (tag `manual-only`). Home shows "Your background helper isn't running" when the worker heartbeat is stale. |
+| "Your AI connection needs a quick test" | Settings → AI Assistant → Advanced → AI connection → Connect & test. Any change to provider, model or address requires a new test. |
+| Webhooks never arrive | Localhost isn't reachable: use automatic checking (Settings → Messaging accounts → Advanced), or deploy with HTTPS. Check that the signing secret matches (bad signatures get a 401 and are logged). |
+| Account shows "Needs a login code" / "Needs reconnecting" | Reconnect in the Fans API dashboard, then Settings → Messaging accounts → Check again. |
 | "Send result uncertain" | Check the platform. Then choose "I can see it was delivered", "Retry (same key)" or "Discard" in the chat. The app never resends on its own. |
 | Login says too many attempts | Wait 15 minutes (per-email and per-IP throttling). |
 | `npm install` fails downloading Prisma engines behind a proxy | Download `schema-engine` for your platform from binaries.prisma.sh, verify its `.sha256`, and set `PRISMA_SCHEMA_ENGINE_BINARY`. |
@@ -204,7 +221,7 @@ Test a restore into a scratch database before relying on it. Retention purges li
 
 | Command | Purpose |
 |---|---|
-| `npm run dev` / `npm run worker` | Web app / background worker (development) |
+| `npm run dev` / `npm run worker` | Web app / background worker (development). Restart the worker after changing server code: it doesn't hot-reload. |
 | `npm test` | Unit, integration (PGlite: real Postgres in-process) and adapter tests |
 | `npm run typecheck` | TypeScript |
 | `npm run db:migrate` / `npm run db:seed` | Apply migrations / seed simulator and eval cases |
@@ -216,7 +233,7 @@ Test a restore into a scratch database before relying on it. Retention purges li
 
 Run on 2026-11-11 (macOS arm64, Node 22.23):
 
-- `npm test`: **59 passed** across 3 files.
+- `npm test`: **63 passed** across 3 files. This includes the guided-tour flow (simulated account only, drafts on request, nothing sent, restart replaces the test chat) and the Telegram chat lookup.
   - Policy, timing (including the DST switch and windows that cross midnight), validator, triage/scoring, crypto/redaction, SSRF guard, experiments and disclosure.
   - Integration flows on in-process Postgres:
     - draft and auto modes, debounce, duplicate and out-of-order events, bad signatures
@@ -231,7 +248,12 @@ Run on 2026-11-11 (macOS arm64, Node 22.23):
   - The workbench exposed two **triage gaps**: "billed but nothing unlocked" and "talk to her personally" were not routed to a human. It also exposed an off-topic catalog answer. All three are fixed and covered by regression tests.
   - Final run: **96% accuracy, 0 forbidden hits, 0 errors**. The 3 remaining misses are conservative handoffs.
   - These figures measure the pipeline and the safety routing, not writing quality. Run the same set against DeepSeek once a key is configured.
-- Browser check (desktop and 375 px mobile): every page loaded with no console errors. Tested end to end: login, the simulated inbox, redraft → approve & send, a high-intent scenario → handoff, the timing preview, and mobile pane navigation.
+- Browser check of the redesign (1024 px desktop and 375 px mobile; page text, DOM geometry and real clicks):
+  - The full guided tour from Welcome to "All set": test message, AI draft, edit, personality change, *Try this style* before/after, approve (sent to the simulator, labelled "AI draft · approved · Demo"), pause/resume, take over/hand back, and emergency stop on/off from the tour overlay.
+  - Back, Esc-to-exit, resume, resume after reload, and Skip tour.
+  - Mobile layouts: the bottom tab bar, the stop button in the top bar, the one-pane inbox, and the tour card as a top/bottom sheet.
+  - Every Settings section.
+  - The browser pane did not render animation frames in mobile emulation, so motion and visual polish on phones were not visually verified.
 
 **Not verified (requires your credentials):**
 - Live Fans API connection, chat/message shapes, sends, webhooks and idempotency replays.
@@ -242,4 +264,4 @@ Run on 2026-11-11 (macOS arm64, Node 22.23):
 
 - [RESEARCH.md](RESEARCH.md): providers, terms status, decisions, unresolved questions.
 - [ARCHITECTURE.md](ARCHITECTURE.md): components, data flow, queue, send state machine, security.
-- [WALKTHROUGH.md](WALKTHROUGH.md): guided tour (also available in-app under Guide).
+- [WALKTHROUGH.md](WALKTHROUGH.md): the interactive guided tour and setup wizard.

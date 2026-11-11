@@ -58,6 +58,12 @@ export async function simulateScenario(userId: string, scenario: Scenario, chatI
   return { conversationId: conv?.id, results };
 }
 
+/** Deliver one signed simulated inbound message (same path as a real webhook). Used by the guided tour. */
+export async function deliverSimulated(chatId: string, fromName: string, text: string) {
+  const acct = await simAccount();
+  return deliver(payload(acct.externalAccountId ?? acct.id, chatId, fromName, text, new Date()));
+}
+
 export async function simulateCustomText(userId: string, chatId: string, text: string) {
   const acct = await simAccount();
   const r = await deliver(payload(acct.externalAccountId ?? acct.id, chatId, "", text, new Date()));

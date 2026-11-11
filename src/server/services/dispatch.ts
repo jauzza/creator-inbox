@@ -170,7 +170,7 @@ export async function performSend(sendId: string): Promise<DispatchOutcome> {
       await db().$transaction(async (tx) => {
         await tx.outboundSend.update({ where: { id: sendId }, data: { status: "FAILED", lastError: result.error } });
         if (s.draftId) await tx.draft.update({ where: { id: s.draftId }, data: { status: "FAILED", rejectedReason: result.error } });
-        await notify(tx, { kind: "send_failed", title: "Message failed to send", body: `${customerLabel(conv.customerId)} · ${result.error.slice(0, 120)}`, link: `/inbox?c=${conv.id}`, dedupeKey: `fail:${sendId}` });
+        await notify(tx, { kind: "send_failed", title: "A reply couldn't be sent", body: `${customerLabel(conv.customerId)} · ${result.error.slice(0, 120)}`, link: `/inbox?c=${conv.id}`, dedupeKey: `fail:${sendId}` });
       });
       return { outcome: "failed" };
     case "retryable_not_sent": {
@@ -194,7 +194,7 @@ async function markUncertain(sendId: string, error: string) {
     const s = await tx.outboundSend.update({ where: { id: sendId }, data: { status: "UNCERTAIN", lastError: error } });
     if (s.draftId) await tx.draft.update({ where: { id: s.draftId }, data: { status: "UNCERTAIN" } });
     await enqueue(tx, { type: "reconcile_send", conversationId: s.conversationId, runAt: new Date(Date.now() + 30000), payload: { sendId, check: 1 }, dedupeKey: `reconcile:${sendId}` });
-    await notify(tx, { kind: "send_uncertain", title: "Send result uncertain", body: "Checking with the provider before doing anything else.", link: `/inbox?c=${s.conversationId}`, dedupeKey: `uncertain:${sendId}` });
+    await notify(tx, { kind: "send_uncertain", title: "Checking whether a reply arrived", body: "We lost contact while sending. We're checking before doing anything else, and never send twice.", link: `/inbox?c=${s.conversationId}`, dedupeKey: `uncertain:${sendId}` });
   });
 }
 

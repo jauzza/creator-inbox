@@ -48,7 +48,7 @@ export async function syncAccount(accountId: string): Promise<{ outcome: string 
     await db().creatorAccount.update({ where: { id: accountId }, data: { lastSyncError: msg.slice(0, 300), connectionStatus: status } });
     if (status !== account.connectionStatus) {
       await db().$transaction((tx) =>
-        notify(tx, { kind: "connection", title: `Account ${account.displayName}: ${status.toLowerCase().replace("_", " ")}`, body: "Check Integrations → Messaging.", link: "/integrations", dedupeKey: `conn:${accountId}`, cooldownMin: 60 }),
+        notify(tx, { kind: "connection", title: `${account.displayName} needs attention`, body: "We couldn't reach this account. Open Settings → Messaging accounts to reconnect it.", link: "/settings/accounts", dedupeKey: `conn:${accountId}`, cooldownMin: 60 }),
       );
       await audit("account.status_changed", { target: accountId, details: { status, error: msg } });
     }

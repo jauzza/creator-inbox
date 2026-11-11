@@ -361,3 +361,33 @@ describe("isolation, secrets, simulator boundary, offers", () => {
     await expect(proposeOffer(ownerId, { customerId: kim.id, catalogItemId: film.id, priceCents: 900 })).rejects.toThrow(/suppressed/);
   });
 });
+
+describe("guided tour (simulated test customer)", () => {
+  it("delivers the test message, drafts on request, and never touches a real provider", async () => {
+    const { tourReceive, tourDraft, TOUR_MESSAGE } = await import("@/server/services/tour");
+    const { conversationId } = await tourReceive(ownerId);
+    const conv = await db.conversation.findUniqueOrThrow({ where: { id: conversationId }, include: { account: true, messages: true } });
+    expect(conv.account.isSimulated).toBe(true);
+    expect(conv.messages.map((m) => m.body)).toEqual([TOUR_MESSAGE]);
+    // The tour drafts explicitly, so no debounced job is left behind.
+    expect(await db.job.count({ where: { conversationId, status: "PENDING", type: "generate_reply" } })).toBe(0);
+
+    const r = await tourDraft(ownerId, conversationId);
+    const d = await db.draft.findUniqueOrThrow({ where: { id: r.draftId! } });
+    expect(d.status).toBe("PROPOSED"); // Draft-only default: nothing is queued to send
+    expect(d.body).toMatch(/Tuesdays and Fridays/);
+    expect(d.body).toMatch(/#ai/);
+    expect(await db.simulatorSent.count()).toBe(0);
+
+    // Restarting the tour replaces the test conversation instead of piling up copies.
+    const again = await tourReceive(ownerId);
+    expect(again.conversationId).not.toBe(conversationId);
+    expect(await db.conversation.count({ where: { externalChatId: "sim_tour_guest" } })).toBe(1);
+  });
+
+  it("refuses to draft for a conversation that isn't the tour's", async () => {
+    const { tourDraft } = await import("@/server/services/tour");
+    const r = await inbound("sim_fan_sam", "hello");
+    await expect(tourDraft(ownerId, r.conversationId)).rejects.toThrow(/tour/);
+  });
+});

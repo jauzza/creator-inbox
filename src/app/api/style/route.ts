@@ -22,10 +22,11 @@ export const GET = api({ auth: "user" }, async ({ user, req }) => {
   await assertAccountAccess(user, acct.id);
   const versions = await db().styleProfile.findMany({ where: { accountId: acct.id }, orderBy: { version: "desc" }, take: 30 });
   const active = versions.find((v) => v.active);
+  const parsed = active ? styleSchema.safeParse(active.data) : null;
   const exp = await db().integrationConfig.findUnique({ where: { id: "experiment" } });
   return {
     account: { id: acct.id, name: acct.displayName, disclosureText: acct.disclosureText },
-    active: active ? { version: active.version, data: styleSchema.safeParse(active.data).success ? active.data : DEFAULT_STYLE } : { version: null, data: DEFAULT_STYLE },
+    active: active ? { version: active.version, data: parsed?.success ? parsed.data : DEFAULT_STYLE } : { version: null, data: DEFAULT_STYLE },
     versions: versions.map((v) => ({ version: v.version, active: v.active, changeNote: v.changeNote, createdAt: v.createdAt })),
     experiment: exp ? { enabled: exp.enabled, ...(exp.settings as object) } : null,
     promptVersion: PROMPT_VERSION,
@@ -53,6 +54,8 @@ export const POST = api({ auth: "user", body: post }, async ({ user, body }) => 
     const acct = await db().creatorAccount.findUniqueOrThrow({ where: { id: body.accountId } });
     return {
       provider: provider.label,
+      /** true when the built-in offline rules wrote this (no AI model connected): the UI labels it as a sample. */
+      isSample: !!provider.isOffline,
       model: r.model,
       output: r.output,
       finalText: r.output?.reply ? applyDisclosure(r.output.reply, { isFirstAiMessage: true, mode: auto.rules.disclosure.mode, disclosureText: acct.disclosureText, tag: auto.rules.disclosure.tag }) : null,
@@ -62,7 +65,7 @@ export const POST = api({ auth: "user", body: post }, async ({ user, body }) => 
       latencyMs: r.latencyMs,
       tokens: { in: r.tokensIn, out: r.tokensOut },
       costMicros: cost,
-      applied: { tone: body.data.tone, formality: body.data.formality, emoji: body.data.emoji, length: body.data.replyLength, lowercase: body.data.lowercase, contractions: body.data.contractions, casualPunctuation: body.data.casualPunctuation, language: body.data.language, examplesUsed: Math.min(4, body.data.goodExamples.length), disclosure: auto.rules.disclosure },
+      applied: { tone: body.data.tone, formality: body.data.formality, expressiveness: body.data.expressiveness, emoji: body.data.emoji, length: body.data.replyLength, lowercase: body.data.lowercase, contractions: body.data.contractions, casualPunctuation: body.data.casualPunctuation, language: body.data.language, examplesUsed: Math.min(4, body.data.goodExamples.length), disclosure: auto.rules.disclosure },
       prompt: body.showPrompt ? buildReplyMessages(ctx) : undefined,
     };
   }

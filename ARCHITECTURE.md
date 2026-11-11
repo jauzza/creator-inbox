@@ -14,7 +14,7 @@ Next.js app (route handlers in src/app/api/**) ── src/server/** (domain serv
    ▼            │
 Worker process (src/worker/main.ts) ── claims jobs ── providers:
    ├─ MessagingProvider: SimulatorProvider (DB only, no network) | FansApiProvider (https, allow-listed hosts)
-   ├─ AiProvider: OfflineRulesProvider | OpenAiCompatibleProvider (DeepSeek / custom)
+   ├─ AiProvider: OfflineRulesProvider (sample rules; applies style settings deterministically) | OpenAiCompatibleProvider (DeepSeek / custom)
    └─ Telegram notifier
 Optional: Caddy (HTTPS) → app; public provider webhooks → /api/webhooks/onlyfansapi_com
 ```
@@ -25,6 +25,32 @@ The stack is single-workspace, with no microservices and no Kubernetes. There ar
 - the notification channel: `src/server/notify/*`
 
 **AI proposes, code decides.** The model only returns `{action, reply, explanation}`. Permissions, scheduling and sending are decided by deterministic code: `automation/policy.ts`, `automation/timing.ts` and `services/dispatch.ts`.
+
+## Frontend structure
+
+- **Navigation:** `src/components/shell.tsx`.
+  - Four areas: Home `/`, Inbox `/inbox`, Customers `/customers`, Settings `/settings/*`.
+  - The automation status card and **Stop all sends** are always visible.
+  - Bottom tab bar plus top bar on phones.
+- **Old URLs** (`/handoffs`, `/automation`, `/style`, `/integrations`, `/analytics`, `/simulator`, `/activity`, `/help`) redirect to their new homes (`next.config.ts`).
+- **Settings sections:** AI Assistant, Messaging accounts, Automation & scheduling, Notifications, Appearance & preferences, Advanced.
+  - Advanced holds the Activity log, Demo lab (the simulator), Team, Data & backups, and Troubleshooting.
+  - The full report is at `/insights`.
+- **Setup wizard:** `/setup`.
+- **Design system:** `src/components/ui.tsx` (tokens in `globals.css`).
+  - `humanize()` in `src/lib/client.ts` turns technical errors into plain sentences. Every error UI keeps the original under "Technical details".
+- **Guided tour:** `src/components/tour/`.
+  - `tour.tsx` is the engine.
+    - The spotlight is four dimmed, blurred panels around the target's rectangle, so the target stays sharp and clickable.
+    - Targets are tracked every animation frame, with a timer fallback.
+    - Explanations are placed next to the target; on phones they become a sheet.
+    - Keyboard: Esc and the arrow keys. Progress is kept in `localStorage`.
+    - A floating stop button sits above the overlay.
+  - `steps.tsx` holds the content. Steps can navigate, wait for a UI signal (`tour.signal(event)`) or a route change, run a real action, or `ensure` prerequisites so skipping never strands the user.
+- **Tour backend:** `src/server/services/tour.ts` and `POST /api/tour`.
+  - `receive` re-creates the "Taylor (test customer)" chat on the **simulated** account and delivers the test message through the signed simulator webhook.
+  - `draft` runs the normal `generateReply` pipeline on demand.
+  - Both refuse anything that isn't the simulated tour conversation.
 
 ## Substitution: Postgres queue instead of Redis/BullMQ
 

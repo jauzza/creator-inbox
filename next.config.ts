@@ -17,6 +17,19 @@ const securityHeaders = [
 const config: NextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["@node-rs/argon2", "pg", "@electric-sql/pglite"],
+  // Pages consolidated in the redesign: Home / Inbox / Customers / Settings. Old links keep working.
+  async redirects() {
+    return [
+      { source: "/handoffs", destination: "/inbox?filter=needs_you", permanent: false },
+      { source: "/automation", destination: "/settings/automation", permanent: false },
+      { source: "/style", destination: "/settings/ai", permanent: false },
+      { source: "/integrations", destination: "/settings/accounts", permanent: false },
+      { source: "/analytics", destination: "/insights", permanent: false },
+      { source: "/simulator", destination: "/settings/advanced?tab=demo", permanent: false },
+      { source: "/activity", destination: "/settings/advanced", permanent: false },
+      { source: "/help", destination: "/settings/preferences", permanent: false },
+    ];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

@@ -72,7 +72,7 @@ export async function processWebhook(kind: "simulator" | "onlyfansapi_com", rawB
           await audit("account.status_webhook", { target: account.id, details: { status: ev.status } });
           if (ev.status !== "CONNECTED")
             await db().$transaction((tx) =>
-              notify(tx, { kind: "connection", title: `${account.displayName}: ${ev.status.toLowerCase().replace(/_/g, " ")}`, body: "Reconnect through the provider, then re-test under Integrations.", link: "/integrations", dedupeKey: `conn:${account.id}`, cooldownMin: 60 }),
+              notify(tx, { kind: "connection", title: `${account.displayName} needs attention`, body: "We couldn't reach this account. Reconnect it in Fans API, then press Check again in Settings → Messaging accounts.", link: "/settings/accounts", dedupeKey: `conn:${account.id}`, cooldownMin: 60 }),
             );
         }
         results.push("account_status");

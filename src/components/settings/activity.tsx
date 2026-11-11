@@ -3,23 +3,7 @@ import { useEffect, useState } from "react";
 import { Badge, Button, Card, ErrorBox, Field, Input, Loading, Notice, PageHeader, Select, Switch, Table, Tabs, Textarea, useAction } from "@/components/ui";
 import { ago, fmtTime, money, post, useApi } from "@/lib/client";
 
-export default function ActivityPage() {
-  const [tab, setTab] = useState<"audit" | "team" | "catalog" | "retention" | "trouble">("audit");
-  useEffect(() => localStorage.setItem("ci_logs_seen", "1"), []);
-  return (
-    <div className="mx-auto max-w-6xl space-y-4">
-      <PageHeader title="Activity & settings" description="Audit history of every control action, team permissions, the human-controlled catalog, retention, backups and troubleshooting." />
-      <Tabs tabs={[{ id: "audit", label: "Audit log" }, { id: "team", label: "Team" }, { id: "catalog", label: "Catalog" }, { id: "retention", label: "Retention & backups" }, { id: "trouble", label: "Troubleshooting" }]} value={tab} onChange={setTab} />
-      {tab === "audit" && <Audit />}
-      {tab === "team" && <Team />}
-      {tab === "catalog" && <Catalog />}
-      {tab === "retention" && <Retention />}
-      {tab === "trouble" && <Trouble />}
-    </div>
-  );
-}
-
-function Audit() {
+export function Audit() {
   const [q, setQ] = useState("");
   const { data, error, reload } = useApi<any>(`/api/activity?q=${encodeURIComponent(q)}`, { poll: 10000 });
   return (
@@ -42,7 +26,7 @@ function Audit() {
   );
 }
 
-function Team() {
+export function Team() {
   const { data, reload } = useApi<any>("/api/team");
   const { busy, run } = useAction();
   const [f, setF] = useState({ email: "", name: "", role: "OPERATOR", password: "" });
@@ -82,7 +66,7 @@ function Team() {
   );
 }
 
-function Catalog() {
+export function Catalog() {
   const { data, reload } = useApi<any>("/api/catalog");
   const accounts = useApi<any>("/api/automation");
   const { run } = useAction();
@@ -123,7 +107,7 @@ function Catalog() {
   );
 }
 
-function Retention() {
+export function Retention() {
   const { busy, run } = useAction();
   const [kind, setKind] = useState("messages");
   const [days, setDays] = useState("365");
@@ -154,7 +138,7 @@ npm run backup`}</pre>
   );
 }
 
-function Trouble() {
+export function Trouble() {
   const { data } = useApi<any>("/api/activity");
   const health = useApi<any>("/api/health", { poll: 10000 });
   if (!data) return <Loading />;

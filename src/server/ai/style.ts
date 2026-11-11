@@ -11,6 +11,8 @@ export const styleSchema = z.object({
   language: z.string().max(40),
   tone: z.enum(["warm", "playful", "confident", "concise", "professional"]),
   formality: z.number().int().min(0).max(100),
+  /** 0 = reserved, 100 = expressive. Added in v1.3; older saved styles default to 50. */
+  expressiveness: z.number().int().min(0).max(100).default(50),
   emoji: z.enum(["none", "rare", "some", "often"]),
   lowercase: z.boolean(),
   contractions: z.boolean(),
@@ -39,6 +41,7 @@ export const DEFAULT_STYLE: Style = {
   language: "English",
   tone: "warm",
   formality: 30,
+  expressiveness: 50,
   emoji: "rare",
   lowercase: false,
   contractions: true,

@@ -79,3 +79,19 @@ describe("AI adapter", () => {
     expect(JSON.parse(calls.at(-1)!.body!).thinking).toEqual({ type: "disabled" });
   });
 });
+
+describe("Telegram chat lookup (mocked transport)", () => {
+  it("lists chats that messaged the bot, without echoing the token", async () => {
+    const { recentTelegramChats } = await import("@/server/notify/telegram");
+    mock(200, { ok: true, result: [{ message: { chat: { id: 123456789, first_name: "Mira" } } }, { message: { chat: { id: 123456789, first_name: "Mira" } } }] });
+    const r = await recentTelegramChats("123:abc_token_value");
+    expect(r).toEqual({ ok: true, chats: [{ id: "123456789", name: "Mira" }] });
+    expect(calls[0].url).toMatch(/^https:\/\/api\.telegram\.org\/bot.+\/getUpdates/);
+    expect(JSON.stringify(r)).not.toContain("abc_token_value");
+  });
+  it("reports a rejected token plainly", async () => {
+    const { recentTelegramChats } = await import("@/server/notify/telegram");
+    mock(401, { ok: false });
+    expect(await recentTelegramChats("bad")).toEqual({ ok: false, error: "Telegram rejected the bot token" });
+  });
+});

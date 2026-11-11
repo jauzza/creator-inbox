@@ -3,16 +3,16 @@ import { useEffect, useState } from "react";
 import { Badge, Button, Card, ErrorBox, Field, Input, Loading, Notice, PageHeader, Select, SimBadge, Switch, useAction } from "@/components/ui";
 import { ago, post, useApi } from "@/lib/client";
 
-function SecretStatus({ s, label }: { s: { set: boolean; updatedAt: string | null }; label: string }) {
+export function SecretStatus({ s, label }: { s: { set: boolean; updatedAt: string | null }; label: string }) {
   return s.set ? <Badge tone="ok" title={`Saved ${ago(s.updatedAt)}`}>{label} saved</Badge> : <Badge>{label} not set</Badge>;
 }
-function TestResult({ t }: { t: { at: string; ok: boolean; detail: string } | null }) {
+export function TestResult({ t }: { t: { at: string; ok: boolean; detail: string } | null }) {
   if (!t) return <p className="text-[11px] text-faint">Not tested yet.</p>;
   return <p className={`text-xs ${t.ok ? "text-ok" : "text-danger"}`}>{t.ok ? "✓" : "✗"} {t.detail} <span className="text-faint">({ago(t.at)})</span></p>;
 }
 
 /** Write-only secret input: the value is sent once and never returned or kept in browser storage. */
-function SecretInput({ label, onSave, busy, hint }: { label: string; onSave: (v: string) => Promise<unknown>; busy?: boolean; hint?: string }) {
+export function SecretInput({ label, onSave, busy, hint }: { label: string; onSave: (v: string) => Promise<unknown>; busy?: boolean; hint?: string }) {
   const [v, setV] = useState("");
   return (
     <form className="flex items-end gap-2" onSubmit={async (e) => { e.preventDefault(); await onSave(v); setV(""); }}>
@@ -22,7 +22,7 @@ function SecretInput({ label, onSave, busy, hint }: { label: string; onSave: (v:
   );
 }
 
-export default function IntegrationsPage() {
+function IntegrationsPage() {
   const { data, error, loading, reload } = useApi<any>("/api/integrations");
   if (loading && !data) return <Loading />;
   if (error && !data) return <ErrorBox error={error} retry={reload} />;
@@ -37,7 +37,7 @@ export default function IntegrationsPage() {
   );
 }
 
-function Onboarding({ d }: { d: any }) {
+export function Onboarding({ d }: { d: any }) {
   const live = d.accounts.filter((a: any) => !a.isSimulated);
   const steps = [
     ["Choose messaging provider and enter its API key", d.messaging.key.set],
@@ -61,7 +61,7 @@ function Onboarding({ d }: { d: any }) {
   );
 }
 
-function Messaging({ d, reload }: { d: any; reload: () => void }) {
+export function Messaging({ d, reload }: { d: any; reload: () => void }) {
   const m = d.messaging;
   const { busy, run } = useAction();
   const [baseUrl, setBaseUrl] = useState(m.settings.baseUrl);
@@ -133,7 +133,7 @@ function Messaging({ d, reload }: { d: any; reload: () => void }) {
   );
 }
 
-function Ai({ d, reload }: { d: any; reload: () => void }) {
+export function Ai({ d, reload }: { d: any; reload: () => void }) {
   const [s, setS] = useState<any>(d.ai.settings);
   useEffect(() => setS(d.ai.settings), [d.ai.settings]);
   const { busy, run } = useAction();
@@ -187,7 +187,7 @@ function Ai({ d, reload }: { d: any; reload: () => void }) {
   );
 }
 
-function Telegram({ d, reload }: { d: any; reload: () => void }) {
+export function Telegram({ d, reload }: { d: any; reload: () => void }) {
   const t = d.telegram;
   const [enabled, setEnabled] = useState(t.enabled);
   const [chatId, setChatId] = useState(t.settings.chatId ?? "");

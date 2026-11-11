@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Style } from "./style";
 import type { ChatMessage } from "./types";
 
-export const PROMPT_VERSION = "reply-v1.2";
+export const PROMPT_VERSION = "reply-v1.3";
 
 export const replyOutputSchema = z.object({
   action: z.enum(["ANSWER", "CLARIFY", "ACKNOWLEDGE", "WAIT", "HANDOFF"]),
@@ -42,7 +42,8 @@ export function selectExamples(style: Style, latest: string, n = 4) {
 function styleInstructions(s: Style): string[] {
   const out = [
     `Tone: ${s.tone}. Formality ${s.formality}/100 (0 = very casual).`,
-    `Length: ${s.replyLength} (short = 1–2 sentences).`,
+    `Expressiveness ${s.expressiveness}/100 (0 = calm and reserved, 100 = enthusiastic and expressive).`,
+    `Length: ${s.replyLength} (short = 1–2 sentences, medium = 2–3 sentences, long = up to 5 sentences).`,
     `Emoji: ${s.emoji === "none" ? "do not use emoji" : `${s.emoji}; never force one into a reply`}.`,
     s.lowercase ? "Mostly lowercase is fine." : "Use normal capitalisation.",
     s.contractions ? "Use contractions." : "Avoid contractions.",

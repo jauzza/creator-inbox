@@ -1,22 +1,66 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens. One restrained accent (periwinkle) on a near-black neutral scale.
+ * Status colours are desaturated so they inform without shouting.
+ */
 @theme {
-  --color-bg: #0d0f12;
-  --color-panel: #14171c;
-  --color-panel-2: #1a1e24;
-  --color-line: #262b33;
-  --color-line-strong: #343a44;
-  --color-fg: #e7e9ec;
-  --color-muted: #9aa3ae;
-  --color-faint: #6b7480;
-  --color-accent: #5fb3a1;
-  --color-accent-strong: #79c8b6;
-  --color-ok: #6cc28a;
-  --color-warn: #e0b45c;
-  --color-danger: #e5736b;
-  --color-info: #7aa7e0;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --color-bg: #0a0a0c;
+  --color-panel: #111114;
+  --color-panel-2: #17171b;
+  --color-panel-3: #1e1e23;
+  --color-line: #222228;
+  --color-line-strong: #2e2e36;
+  --color-fg: #ededf0;
+  --color-muted: #a0a0ab;
+  --color-faint: #6c6c78;
+  --color-accent: #8b8cf6;
+  --color-accent-strong: #a5a6fa;
+  --color-accent-ink: #0d0d1f;
+  --color-ok: #5fcf8f;
+  --color-warn: #e8b85c;
+  --color-danger: #f0736a;
+  --color-info: #7fb0f0;
+  --font-sans: "Inter var", Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+
+  --animate-fade-in: fade-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-rise: rise 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-pop: pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-pulse-ring: pulse-ring 1.8s ease-out infinite;
+  --animate-dot: dot 1.2s ease-in-out infinite;
+  --animate-slide-in-right: slide-in-right 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes shimmer {
+    from { background-position: -200% 0; }
+    to { background-position: 200% 0; }
+  }
+  @keyframes pulse-ring {
+    0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-accent) 55%, transparent); }
+    70% { box-shadow: 0 0 0 10px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+  @keyframes dot {
+    0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+    40% { opacity: 1; transform: translateY(-2px); }
+  }
+  @keyframes slide-in-right {
+    from { opacity: 0; transform: translateX(16px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
 }
 
 html {
@@ -26,12 +70,14 @@ body {
   background: var(--color-bg);
   color: var(--color-fg);
   font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01", "ss03";
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 :focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 ::selection {
   background: color-mix(in oklab, var(--color-accent) 35%, transparent);
@@ -40,17 +86,64 @@ html,
 body,
 div,
 ul,
-textarea {
+textarea,
+aside,
+section {
   scrollbar-width: thin;
   scrollbar-color: var(--color-line-strong) transparent;
 }
+
+/* Subtle surface gradient used on hero / highlighted cards. */
+.surface-glow {
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in oklab, var(--color-accent) 12%, transparent) 0%, transparent 55%),
+    var(--color-panel);
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--color-panel-2) 0%, var(--color-panel-3) 50%, var(--color-panel-2) 100%);
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+input[type="range"].slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--color-accent) 0%, var(--color-accent) var(--fill, 50%), var(--color-line-strong) var(--fill, 50%));
+  outline-offset: 6px;
+}
+input[type="range"].slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--color-fg);
+  border: 3px solid var(--color-accent);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.4);
+  cursor: grab;
+}
+input[type="range"].slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--color-fg);
+  border: 3px solid var(--color-accent);
+  cursor: grab;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  html,
-  body,
-  div,
-  button,
-  a {
-    transition: none !important;
-    animation: none !important;
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
+}
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] *::before,
+html[data-motion="reduced"] *::after {
+  transition-duration: 0.01ms !important;
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
 }

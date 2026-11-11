@@ -1,26 +1,32 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
-import { Activity, BarChart3, Bell, Bot, FlaskConical, Gauge, HelpCircle, Inbox, LifeBuoy, LogOut, Menu, OctagonX, Plug, Settings2, Sparkles, Users, X } from "lucide-react";
-import { Button, cn, Dialog, ModeBadge, ToastProvider, useAction, Badge } from "./ui";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { Bell, Compass, Home, Inbox, LogOut, MessageCircleHeart, MoreHorizontal, OctagonX, Settings, Users } from "lucide-react";
+import { Badge, Button, cn, Dialog, ToastProvider, useAction, type Mode } from "./ui";
 import { post, setCsrf, useApi, ago } from "@/lib/client";
+import { TourProvider, useTour } from "./tour/tour";
 
 export type Me = { id: string; email: string; name: string; role: "OWNER" | "OPERATOR"; csrfToken: string };
 
 const NAV = [
-  { href: "/", label: "Overview", icon: Gauge },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/customers", label: "Customers", icon: Users },
-  { href: "/handoffs", label: "Handoffs", icon: LifeBuoy },
-  { href: "/automation", label: "Automation", icon: Bot },
-  { href: "/style", label: "Creator style", icon: Sparkles },
-  { href: "/integrations", label: "Integrations", icon: Plug },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/simulator", label: "Simulator", icon: FlaskConical },
-  { href: "/activity", label: "Activity & settings", icon: Settings2 },
-  { href: "/help", label: "Guide", icon: HelpCircle },
+  { href: "/", label: "Home", icon: Home, tour: "nav-home" },
+  { href: "/inbox", label: "Inbox", icon: Inbox, tour: "nav-inbox" },
+  { href: "/customers", label: "Customers", icon: Users, tour: "nav-customers" },
+  { href: "/settings", label: "Settings", icon: Settings, tour: "nav-settings" },
 ];
+
+type AutoState = { globalMode: Mode; emergencyStop: boolean; emergencyStopAt: string | null };
+type ShellCtx = { me: Me; auto: AutoState | null; reloadAuto: () => void; openStop: () => void; attention: number };
+const Ctx = createContext<ShellCtx | null>(null);
+export const useShell = () => useContext(Ctx)!;
+
+const GLOBAL_LABEL: Record<string, { label: string; tone: "accent" | "ok" | "danger"; hint: string }> = {
+  DRAFT: { label: "Draft only", tone: "accent", hint: "AI writes drafts. You approve every send." },
+  AUTO: { label: "Automatic", tone: "ok", hint: "Simple, safe replies may send by themselves." },
+  PAUSED: { label: "AI off", tone: "danger", hint: "No drafts and no automatic replies." },
+  MANUAL: { label: "Manual", tone: "danger", hint: "You write every reply." },
+};
 
 export function Shell({ me, children }: { me: Me; children: ReactNode }) {
   setCsrf(me.csrfToken);
@@ -32,163 +38,317 @@ export function Shell({ me, children }: { me: Me; children: ReactNode }) {
 }
 
 function ShellInner({ me, children }: { me: Me; children: ReactNode }) {
-  const path = usePathname();
-  const [navOpen, setNavOpen] = useState(false);
-  const auto = useApi<{ globalMode: "AUTO" | "DRAFT" | "PAUSED"; emergencyStop: boolean; emergencyStopAt: string | null }>("/api/automation", { poll: 10000 });
-  useEffect(() => setNavOpen(false), [path]);
-
-  const nav = (
-    <nav aria-label="Main" className="flex flex-col gap-0.5 p-2">
-      {NAV.map((n) => {
-        const active = n.href === "/" ? path === "/" : path.startsWith(n.href);
-        return (
-          <Link
-            key={n.href}
-            href={n.href}
-            aria-current={active ? "page" : undefined}
-            className={cn("flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px]", active ? "bg-panel-2 text-fg" : "text-muted hover:bg-panel-2 hover:text-fg")}
-          >
-            <n.icon className="size-4 shrink-0" aria-hidden />
-            {n.label}
-          </Link>
-        );
-      })}
-    </nav>
+  const auto = useApi<AutoState>("/api/automation", { poll: 10000 });
+  const ov = useApi<{ attentionTotal: number }>("/api/overview", { poll: 20000 });
+  const [stopOpen, setStopOpen] = useState(false);
+  const openStop = useCallback(() => setStopOpen(true), []);
+  const ctx: ShellCtx = { me, auto: auto.data, reloadAuto: auto.reload, openStop, attention: ov.data?.attentionTotal ?? 0 };
+  useEffect(() => {
+    if (localStorage.getItem("ci.motion") === "reduced") document.documentElement.dataset.motion = "reduced";
+  }, []);
+  return (
+    <Ctx.Provider value={ctx}>
+      <TourProvider onEmergency={openStop} stopOn={!!auto.data?.emergencyStop}>
+        <Frame>{children}</Frame>
+        <EmergencyDialog open={stopOpen} onClose={() => setStopOpen(false)} />
+      </TourProvider>
+    </Ctx.Provider>
   );
+}
+
+function Frame({ children }: { children: ReactNode }) {
+  const path = usePathname();
+  const { me, auto, attention } = useShell();
+  const fullBleed = path.startsWith("/inbox");
+  const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
 
   return (
     <div className="flex min-h-dvh">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-line bg-panel lg:flex">
-        <div className="flex h-14 items-center gap-2 border-b border-line px-4">
-          <Activity className="size-4 text-accent" aria-hidden />
-          <span className="text-sm font-semibold tracking-tight">Creator Inbox</span>
+      {/* Desktop sidebar */}
+      <aside className="sticky top-0 hidden h-dvh w-[232px] shrink-0 flex-col border-r border-line bg-panel/50 lg:flex">
+        <div className="flex h-14 items-center justify-between px-4">
+          <Link href="/" className="flex items-center gap-2 rounded-md">
+            <Logo />
+            <span className="text-[14px] font-semibold tracking-[-0.01em]">Creator Inbox</span>
+          </Link>
+          <Notifications />
         </div>
-        {nav}
-        <div className="mt-auto border-t border-line p-3 text-[11px] text-faint">
-          {me.name} · {me.role.toLowerCase()}
+        <nav aria-label="Main" className="flex flex-col gap-0.5 px-2.5 pt-2">
+          {NAV.map((n) => (
+            <Link
+              key={n.href}
+              href={n.href}
+              data-tour={n.tour}
+              aria-current={isActive(n.href) ? "page" : undefined}
+              className={cn("group flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13.5px] font-medium transition-colors", isActive(n.href) ? "bg-panel-3 text-fg" : "text-muted hover:bg-panel-2 hover:text-fg")}
+            >
+              <n.icon className={cn("size-[17px] shrink-0", isActive(n.href) ? "text-accent" : "text-faint group-hover:text-muted")} aria-hidden />
+              {n.label}
+              {n.href === "/inbox" && attention > 0 && (
+                <span className="ml-auto rounded-full bg-warn/15 px-1.5 text-[11px] font-semibold tabular-nums text-warn" title={`${attention} conversation(s) need you`}>
+                  {attention}
+                </span>
+              )}
+            </Link>
+          ))}
+        </nav>
+        <div className="mt-auto space-y-2 p-2.5">
+          <AutomationCard />
+          <TourButton />
+          <div className="flex items-center justify-between rounded-lg px-2.5 py-1.5">
+            <div className="min-w-0">
+              <p className="truncate text-[13px] font-medium">{me.name}</p>
+              <p className="truncate text-[11px] text-faint">{me.role === "OWNER" ? "Owner" : "Team member"}</p>
+            </div>
+            <SignOut />
+          </div>
         </div>
       </aside>
-      {navOpen && (
-        <div className="fixed inset-0 z-40 bg-black/60 lg:hidden" onClick={() => setNavOpen(false)}>
-          <aside className="h-full w-64 border-r border-line bg-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="flex h-14 items-center justify-between border-b border-line px-4">
-              <span className="text-sm font-semibold">Creator Inbox</span>
-              <Button size="icon" variant="ghost" onClick={() => setNavOpen(false)} aria-label="Close menu">
-                <X className="size-4" />
-              </Button>
-            </div>
-            {nav}
-          </aside>
-        </div>
-      )}
+
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-bg/95 px-3 backdrop-blur sm:px-4">
-          <Button size="icon" variant="ghost" className="lg:hidden" onClick={() => setNavOpen(true)} aria-label="Open menu">
-            <Menu className="size-4" />
-          </Button>
-          {auto.data && (
-            <div className="flex min-w-0 items-center gap-2 text-xs text-muted">
-              <span className="hidden sm:inline">Global:</span>
-              {auto.data.emergencyStop ? <Badge tone="danger">Emergency stop</Badge> : <ModeBadge mode={auto.data.globalMode} />}
-            </div>
-          )}
-          <div className="ml-auto flex items-center gap-1.5">
-            <EmergencyStop state={auto.data} reload={auto.reload} isOwner={me.role === "OWNER"} />
+        {/* Mobile top bar */}
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-bg/90 px-3 backdrop-blur-xl lg:hidden">
+          <Link href="/" className="flex items-center gap-2" aria-label="Home">
+            <Logo />
+          </Link>
+          {auto && <ModePill />}
+          <div className="ml-auto flex items-center gap-1">
+            <StopButton compact />
             <Notifications />
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label="Sign out"
-              title="Sign out"
-              onClick={async () => {
-                await post("/api/auth/logout", {});
-                location.href = "/login";
-              }}
-            >
-              <LogOut className="size-4" />
-            </Button>
+            <MobileMore />
           </div>
         </header>
-        {auto.data?.emergencyStop && (
-          <div role="alert" className="border-b border-danger/40 bg-danger/10 px-4 py-2 text-xs text-danger">
-            Emergency stop is ON since {ago(auto.data.emergencyStopAt)}. No messages will be sent. A request already accepted by the provider before the stop may not be retractable.
-          </div>
-        )}
-        <main className="min-w-0 flex-1 p-3 sm:p-5">{children}</main>
+        {auto?.emergencyStop && <StopBanner at={auto.emergencyStopAt} />}
+        <main className={cn("min-w-0 flex-1", fullBleed ? "" : "px-4 pb-24 pt-5 sm:px-6 lg:px-10 lg:pb-12 lg:pt-8")}>{children}</main>
+
+        {/* Mobile tab bar */}
+        <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-bg/92 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
+          {NAV.map((n) => (
+            <Link key={n.href} href={n.href} data-tour={n.tour} aria-current={isActive(n.href) ? "page" : undefined} className={cn("relative flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium", isActive(n.href) ? "text-fg" : "text-faint")}>
+              <n.icon className={cn("size-5", isActive(n.href) && "text-accent")} aria-hidden />
+              {n.label}
+              {n.href === "/inbox" && attention > 0 && <span className="absolute right-[calc(50%-20px)] top-2.5 size-2 rounded-full bg-warn" aria-label={`${attention} need you`} />}
+            </Link>
+          ))}
+        </nav>
       </div>
     </div>
   );
 }
 
-function EmergencyStop({ state, reload, isOwner }: { state: { emergencyStop: boolean } | null; reload: () => void; isOwner: boolean }) {
-  const [open, setOpen] = useState(false);
-  const { busy, run } = useAction();
-  if (!state) return null;
-  const on = state.emergencyStop;
+function Logo() {
   return (
-    <>
-      <Button variant={on ? "secondary" : "danger"} size="sm" onClick={() => setOpen(true)} aria-label={on ? "Release emergency stop" : "Emergency stop"} disabled={on && !isOwner} title={on && !isOwner ? "Only the owner can release the stop" : undefined}>
-        <OctagonX className="size-3.5" aria-hidden />
-        <span className="hidden sm:inline">{on ? "Release stop" : "Stop all sends"}</span>
+    <span className="flex size-7 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-[#5b5ce0] shadow-[0_4px_14px_-4px_var(--color-accent)]">
+      <MessageCircleHeart className="size-4 text-white" aria-hidden />
+    </span>
+  );
+}
+
+function ModePill() {
+  const { auto } = useShell();
+  if (!auto) return null;
+  if (auto.emergencyStop) return <Badge tone="danger" dot>Sending stopped</Badge>;
+  const g = GLOBAL_LABEL[auto.globalMode];
+  return (
+    <Link href="/settings/automation" title={g.hint}>
+      <Badge tone={g.tone} dot>
+        {g.label}
+      </Badge>
+    </Link>
+  );
+}
+
+function AutomationCard() {
+  const { auto } = useShell();
+  if (!auto) return <div className="h-[108px] rounded-xl border border-line" />;
+  const g = GLOBAL_LABEL[auto.globalMode];
+  return (
+    <div className="rounded-xl border border-line bg-panel p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium uppercase tracking-[0.06em] text-faint">Automation</span>
+        <Link href="/settings/automation" className="text-[11px] text-faint hover:text-fg">
+          Change
+        </Link>
+      </div>
+      <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium">
+        <span className={cn("size-2 rounded-full", auto.emergencyStop ? "bg-danger" : g.tone === "ok" ? "bg-ok" : g.tone === "danger" ? "bg-danger" : "bg-accent")} aria-hidden />
+        {auto.emergencyStop ? "Sending stopped" : g.label}
+      </p>
+      <p className="mt-0.5 text-[11.5px] leading-snug text-muted">{auto.emergencyStop ? "Nothing will be sent until you release the stop." : g.hint}</p>
+      <StopButton />
+    </div>
+  );
+}
+
+function StopButton({ compact }: { compact?: boolean }) {
+  const { auto, openStop, me } = useShell();
+  if (!auto) return null;
+  const on = auto.emergencyStop;
+  const blocked = on && me.role !== "OWNER";
+  return (
+    <Button
+      data-tour="emergency-stop"
+      size={compact ? "sm" : "sm"}
+      variant={on ? "secondary" : "danger"}
+      onClick={openStop}
+      disabled={blocked}
+      title={blocked ? "Only the owner can release the stop" : on ? "Release the emergency stop" : "Stop every send in the app immediately"}
+      aria-label={on ? "Release emergency stop" : "Stop all sends"}
+      className={compact ? "px-2.5" : "mt-2.5 w-full"}
+    >
+      <OctagonX className="size-3.5" aria-hidden />
+      <span className={compact ? "hidden sm:inline" : undefined}>{on ? "Release stop" : "Stop all sends"}</span>
+    </Button>
+  );
+}
+
+function StopBanner({ at }: { at: string | null }) {
+  const { openStop, me } = useShell();
+  return (
+    <div role="alert" className="flex flex-wrap items-center justify-between gap-2 border-b border-danger/30 bg-danger/10 px-4 py-2.5 text-[13px] lg:px-10">
+      <p className="flex items-center gap-2 text-fg">
+        <OctagonX className="size-4 text-danger" aria-hidden />
+        <span>
+          <b className="font-medium">All sending is stopped</b>
+          <span className="text-muted"> since {ago(at)}. Replies wait as drafts until you release the stop.</span>
+        </span>
+      </p>
+      {me.role === "OWNER" && (
+        <Button size="xs" variant="secondary" onClick={openStop}>
+          Release
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function EmergencyDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { auto, reloadAuto } = useShell();
+  const { busy, run } = useAction();
+  const on = !!auto?.emergencyStop;
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={on ? "Release the emergency stop?" : "Stop all sending now?"}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant={on ? "primary" : "danger"}
+            data-autofocus
+            loading={busy === "stop"}
+            onClick={() =>
+              run(
+                "stop",
+                async () => {
+                  const r = await post("/api/automation", { action: "emergency_stop", on: !on });
+                  onClose();
+                  reloadAuto();
+                  return r;
+                },
+                (r: any) => (on ? "Sending is back on. Each chat follows its own setting again." : `Everything is stopped.${r.reverted ? ` ${r.reverted} waiting repl${r.reverted === 1 ? "y is" : "ies are"} back to drafts.` : ""}${r.inFlight ? ` ${r.inFlight} already on its way can't be pulled back.` : ""}`),
+              )
+            }
+          >
+            <OctagonX className="size-4" aria-hidden />
+            {on ? "Release the stop" : "Stop everything"}
+          </Button>
+        </>
+      }
+    >
+      {on ? (
+        <p className="text-[13px] leading-relaxed text-muted">Sending will follow each conversation's normal setting again. Replies that were held stay as drafts until someone approves them.</p>
+      ) : (
+        <ul className="space-y-1.5 text-[13px] leading-relaxed text-muted">
+          <li>• Nothing can be sent: no automatic replies, no approved drafts, no messages you type.</li>
+          <li>• Replies waiting to go out go back to drafts.</li>
+          <li>• A message the platform has already received can't be pulled back.</li>
+        </ul>
+      )}
+    </Dialog>
+  );
+}
+
+function TourButton() {
+  const tour = useTour();
+  const resumable = !tour.saved.finished && !!tour.saved.stepId;
+  return (
+    <button type="button" data-tour="help" onClick={() => tour.start()} className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-muted hover:bg-panel-2 hover:text-fg">
+      <Compass className="size-4 text-faint" aria-hidden />
+      {resumable ? "Resume guided tour" : "Guided tour"}
+    </button>
+  );
+}
+
+function SignOut() {
+  return (
+    <Button
+      size="icon-sm"
+      variant="ghost"
+      aria-label="Sign out"
+      title="Sign out"
+      onClick={async () => {
+        await post("/api/auth/logout", {});
+        location.href = "/login";
+      }}
+    >
+      <LogOut className="size-4" />
+    </Button>
+  );
+}
+
+function MobileMore() {
+  const [open, setOpen] = useState(false);
+  const tour = useTour();
+  return (
+    <div className="relative">
+      <Button size="icon" variant="ghost" aria-label="More" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <MoreHorizontal className="size-4" />
       </Button>
-      <Dialog
-        open={open}
-        onClose={() => setOpen(false)}
-        title={on ? "Release emergency stop?" : "Stop all sending now?"}
-        footer={
-          <>
-            <Button variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant={on ? "primary" : "danger"}
-              loading={busy === "stop"}
-              onClick={() =>
-                run(
-                  "stop",
-                  async () => {
-                    const r = await post("/api/automation", { action: "emergency_stop", on: !on });
-                    setOpen(false);
-                    reload();
-                    return r;
-                  },
-                  (r: any) => (on ? "Emergency stop released" : `Stopped. ${r.reverted ?? 0} queued replies held${r.inFlight ? `; ${r.inFlight} already in flight` : ""}.`),
-                )
-              }
-            >
-              {on ? "Release" : "Stop everything"}
-            </Button>
-          </>
-        }
-      >
-        {on ? (
-          <p className="text-[13px] text-muted">Sending resumes according to each conversation's mode. Held replies stay as drafts until someone approves them.</p>
-        ) : (
-          <div className="space-y-2 text-[13px] text-muted">
-            <p>Every new send attempt is blocked immediately: automatic replies, approved drafts and manual messages.</p>
-            <p>Queued replies return to Draft. A message the provider has already accepted cannot be pulled back.</p>
-          </div>
-        )}
-      </Dialog>
-    </>
+      {open && (
+        <div className="absolute right-0 top-10 z-50 w-56 animate-pop rounded-xl border border-line-strong bg-panel-2 p-1 shadow-2xl" onMouseLeave={() => setOpen(false)}>
+          <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] hover:bg-panel-3" onClick={() => { setOpen(false); tour.start(); }}>
+            <Compass className="size-4 text-faint" /> Guided tour
+          </button>
+          <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-[13px] hover:bg-panel-3" onClick={async () => { await post("/api/auth/logout", {}); location.href = "/login"; }}>
+            <LogOut className="size-4 text-faint" /> Sign out
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
 function Notifications() {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
   const n = useApi<{ unread: number; items: { id: string; title: string; body: string; link: string | null; readAt: string | null; createdAt: string }[] }>("/api/notifications", { poll: 15000 });
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const k = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", h);
+    document.addEventListener("keydown", k);
+    return () => {
+      document.removeEventListener("mousedown", h);
+      document.removeEventListener("keydown", k);
+    };
+  }, [open]);
   return (
-    <div className="relative">
-      <Button size="icon" variant="ghost" aria-label={`Notifications${n.data?.unread ? ` (${n.data.unread} unread)` : ""}`} onClick={() => setOpen((o) => !o)}>
+    <div className="relative" ref={ref}>
+      <Button size="icon" variant="ghost" aria-label={`Notifications${n.data?.unread ? ` (${n.data.unread} unread)` : ""}`} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <Bell className="size-4" />
-        {!!n.data?.unread && <span className="absolute right-1 top-1 min-w-4 rounded-full bg-danger px-1 text-[10px] leading-4 text-white">{n.data.unread}</span>}
+        {!!n.data?.unread && <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-accent ring-2 ring-bg" aria-hidden />}
       </Button>
       {open && (
-        <div className="absolute right-0 top-10 z-50 w-[min(92vw,360px)] rounded-lg border border-line-strong bg-panel shadow-xl">
-          <div className="flex items-center justify-between border-b border-line px-3 py-2">
-            <span className="text-xs font-semibold">Notifications</span>
+        <div className="absolute right-0 top-10 z-50 w-[min(92vw,360px)] animate-pop rounded-xl border border-line-strong bg-panel-2 shadow-2xl lg:left-0 lg:right-auto">
+          <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+            <span className="text-[13px] font-semibold">Notifications</span>
             <Button
-              size="sm"
+              size="xs"
               variant="ghost"
               onClick={async () => {
                 await post("/api/notifications", { all: true });
@@ -198,14 +358,17 @@ function Notifications() {
               Mark all read
             </Button>
           </div>
-          <ul className="max-h-96 divide-y divide-line overflow-y-auto">
-            {n.data?.items.length === 0 && <li className="p-4 text-xs text-muted">Nothing yet.</li>}
+          <ul className="max-h-96 overflow-y-auto p-1">
+            {n.data?.items.length === 0 && <li className="px-3 py-6 text-center text-[13px] text-muted">You're all caught up.</li>}
             {n.data?.items.map((i) => (
-              <li key={i.id} className={cn("px-3 py-2", !i.readAt && "bg-panel-2")}>
-                <Link href={i.link ?? "#"} onClick={() => setOpen(false)} className="block">
-                  <p className="text-[13px] font-medium">{i.title}</p>
-                  <p className="text-xs text-muted">{i.body}</p>
-                  <p className="text-[11px] text-faint">{ago(i.createdAt)}</p>
+              <li key={i.id}>
+                <Link href={fixLink(i.link)} onClick={() => setOpen(false)} className={cn("block rounded-lg px-3 py-2.5 hover:bg-panel-3", !i.readAt && "bg-accent/6")}>
+                  <p className="flex items-center gap-1.5 text-[13px] font-medium">
+                    {!i.readAt && <span className="size-1.5 rounded-full bg-accent" aria-label="unread" />}
+                    {i.title}
+                  </p>
+                  <p className="mt-0.5 text-xs leading-relaxed text-muted">{i.body}</p>
+                  <p className="mt-1 text-[11px] text-faint">{ago(i.createdAt)}</p>
                 </Link>
               </li>
             ))}
@@ -214,4 +377,15 @@ function Notifications() {
       )}
     </div>
   );
+}
+
+/** Older notifications may link to pages that moved in the redesign. */
+function fixLink(link: string | null) {
+  if (!link) return "#";
+  return link
+    .replace(/^\/handoffs/, "/inbox?filter=needs_you")
+    .replace(/^\/automation/, "/settings/automation")
+    .replace(/^\/integrations#telegram/, "/settings/notifications")
+    .replace(/^\/integrations/, "/settings/accounts")
+    .replace(/^\/style/, "/settings/ai");
 }

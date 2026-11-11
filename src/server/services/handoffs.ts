@@ -55,8 +55,8 @@ export async function createHandoff(
   if (!existing) {
     await notify(tx, {
       kind: "handoff",
-      title: `Handoff: ${CATEGORY_LABEL[opts.category]}`,
-      body: `${opts.customerLabel} · priority ${opts.priority}`,
+      title: `${opts.customerLabel} needs you`,
+      body: CATEGORY_LABEL[opts.category],
       link: `/inbox?c=${opts.conversationId}`,
       dedupeKey: `handoff:${opts.conversationId}:${opts.category}`,
       cooldownMin: opts.rules.notifications.cooldownMin,

@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { Badge, Button, Card, ErrorBox, Field, Input, Loading, Notice, PageHeader, Select, useAction } from "@/components/ui";
+import { Badge, Button, Card, ErrorBox, Field, Input, Loading, Notice, Select, useAction } from "@/components/ui";
 import { ago, post, useApi } from "@/lib/client";
 
 const SCENARIO_HELP: Record<string, string> = {
@@ -19,7 +19,7 @@ const SCENARIO_HELP: Record<string, string> = {
   smalltalk: "Light conversation grounded in facts",
 };
 
-export default function SimulatorPage() {
+export function DemoLab() {
   const { data, error, loading, reload } = useApi<any>("/api/simulator", { poll: 5000 });
   const { busy, run } = useAction();
   const [chat, setChat] = useState("");
@@ -34,9 +34,8 @@ export default function SimulatorPage() {
   const call = (key: string, body: object, ok: string) => run(key, async () => { const r = await post("/api/simulator", body); setLast(r); reload(); return r; }, ok);
   const target = chat || undefined;
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
-      <PageHeader title="Simulator" description="No real credentials, no real customers. Simulated events go through the same signed-webhook → ingest → queue → dispatch code as production, with a simulated provider at the edge that performs no network calls." />
-      <Notice>Everything here is fictional and labelled <Badge tone="accent">Simulator</Badge>. Simulator data can never reach a live send endpoint: simulated accounts are hard-wired to the simulated provider.</Notice>
+    <div className="space-y-4">
+      <Notice title="Pretend customers, real app">Send test messages and try tricky situations (failed sends, duplicate messages, a customer asking for a refund) without touching a real account. Everything here is labelled <Badge tone="info">Demo</Badge> and can never reach a real customer: demo accounts are wired to a built-in simulator with no internet access.</Notice>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="Incoming messages" description="Send to an existing simulated chat, or leave blank to create a new fan.">
           <Field label="Target chat">{(id) => <Select id={id} value={chat} onChange={(e) => setChat(e.target.value)} options={[{ value: "", label: "New simulated fan" }, ...data.chats.map((c: any) => ({ value: c.chatId, label: c.name }))]} />}</Field>

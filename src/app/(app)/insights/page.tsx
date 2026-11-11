@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { Card, ErrorBox, Loading, Notice, PageHeader, Select, Stat, Switch, Table } from "@/components/ui";
 import { money, usd, useApi } from "@/lib/client";
@@ -17,12 +18,13 @@ export default function AnalyticsPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-4">
       <PageHeader
-        title="Analytics"
-        description="Every number states its data source. Revenue counts as verified only when a transaction record supports it. The system says so when the data can't answer a question."
+        eyebrow={<Link href="/" className="hover:underline">← Home</Link>}
+        title="Reports"
+        description="How your inbox is doing. Every number says where it comes from, sales only count when a transaction record backs them up, and demo data stays out unless you switch it on."
         actions={
           <div className="flex items-center gap-3">
             <Select aria-label="Window" className="h-8 w-32" value={days} onChange={(e) => setDays(e.target.value)} options={[{ value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }]} />
-            <label className="flex items-center gap-2 text-xs text-muted">Include simulator <Switch label="Include simulator data" checked={sim} onChange={setSim} /></label>
+            <label className="flex items-center gap-2 text-xs text-muted">Include demo data <Switch label="Include simulator data" checked={sim} onChange={setSim} /></label>
           </div>
         }
       />

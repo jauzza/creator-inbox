@@ -12,7 +12,7 @@ export async function seedSimulator() {
   if (existing) return existing;
   const account = await db().creatorAccount.create({
     data: {
-      displayName: "Mira (Simulator)",
+      displayName: "Mira (Demo)",
       provider: "SIMULATOR",
       externalAccountId: "sim_acct_mira",
       isSimulated: true,
